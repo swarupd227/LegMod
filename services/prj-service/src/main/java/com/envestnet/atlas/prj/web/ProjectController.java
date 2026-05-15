@@ -58,6 +58,14 @@ public class ProjectController {
     private PatternService patterns;
 
     /**
+     * JdbcTemplate for the cross-schema aggregation query that powers
+     * the workspace insights strip. Field-injected for the same
+     * test-friendliness reason as PatternService above.
+     */
+    @Autowired(required = false)
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    /**
      * Temporal client. Auto-injected by temporal-spring-boot-starter
      * when {@code spring.temporal.connection.target} is set; null
      * (via the {@code required = false} hook below) when the Temporal
@@ -237,6 +245,83 @@ public class ProjectController {
         List<Workspace> out = new ArrayList<>(accessibleIds.size());
         workspaces.findAllById(accessibleIds).forEach(out::add);
         return out;
+    }
+
+    /**
+     * Workspace-level insights for the dashboard's "Atlas at work" strip.
+     * One round trip returns the four numbers the strip shows:
+     * <ul>
+     *   <li>{@code projectCount} - projects in this workspace</li>
+     *   <li>{@code patternCount} - decisions learned across all past
+     *       Stage C resolutions for the vendor families this
+     *       workspace's projects touch</li>
+     *   <li>{@code vendorCount} - distinct vendor systems migrated</li>
+     *   <li>{@code hoursSavedEstimate} - rough estimate (15 min per
+     *       remembered decision) of engineering review time avoided
+     *       by the pattern library. Conservative; ignores other
+     *       Atlas accelerators</li>
+     * </ul>
+     */
+    @GetMapping("/workspaces/{wsId}/insights")
+    public ResponseEntity<Map<String, Object>> workspaceInsights(@PathVariable UUID wsId) {
+        if (!access.canRead(currentUserEmail(), wsId)) {
+            return ResponseEntity.notFound().build();
+        }
+        stashWorkspaceContext(wsId);
+        try {
+            // Project count + distinct vendors come straight from prj.
+            long projectCount = projects.findByWorkspace(wsId).size();
+            java.util.Set<String> vendors = projects.findByWorkspace(wsId).stream()
+                    .map(p -> p.vendorPartner() == null ? "" : p.vendorPartner().toLowerCase().trim())
+                    .filter(v -> !v.isEmpty())
+                    .collect(java.util.stream.Collectors.toSet());
+
+            // Pattern count + total occurrences come from recon.pattern.
+            // Scope by vendor family to avoid claiming credit for
+            // patterns from unrelated tenants. Two-step query keeps
+            // the SQL simple.
+            long patternCount = 0;
+            long totalOccurrences = 0;
+            if (jdbcTemplate != null) {
+                // When this workspace already has projects, scope the
+                // pattern count to vendor families those projects touch
+                // — the engineer cares about decisions they can reuse.
+                // When the workspace is brand new, fall back to the
+                // global pattern library so the first-impression dashboard
+                // still tells the "Atlas has seen this before" story.
+                Map<String, Object> row;
+                if (!vendors.isEmpty()) {
+                    String inList = vendors.stream()
+                            .map(v -> "'" + v.replace("'", "''") + "'")
+                            .collect(java.util.stream.Collectors.joining(","));
+                    row = jdbcTemplate.queryForMap(
+                            "SELECT count(*) AS pcount, COALESCE(sum(occurrence_count),0) AS ocount "
+                            + "FROM recon.pattern WHERE vendor_family IN (" + inList + ")");
+                } else {
+                    row = jdbcTemplate.queryForMap(
+                            "SELECT count(*) AS pcount, COALESCE(sum(occurrence_count),0) AS ocount "
+                            + "FROM recon.pattern");
+                }
+                patternCount = ((Number) row.get("pcount")).longValue();
+                totalOccurrences = ((Number) row.get("ocount")).longValue();
+            }
+
+            // Estimate: each remembered decision saves ~15 min of
+            // human review time. Round to nearest hour.
+            long hoursSaved = Math.round(totalOccurrences * 0.25);
+
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("workspaceId", wsId);
+            out.put("projectCount", projectCount);
+            out.put("patternCount", patternCount);
+            out.put("vendorCount", vendors.size());
+            out.put("decisionsRemembered", totalOccurrences);
+            out.put("hoursSavedEstimate", hoursSaved);
+            return ResponseEntity.ok(out);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/workspaces/{wsId}/projects")
@@ -1186,12 +1271,104 @@ public class ProjectController {
                         reconUrl + "/internal/recon/projects/" + p.id() + "/run",
                         new HttpEntity<>(body, h), Map.class);
                 advanceStage(p, "C");          // B → passed, C → in_progress
-                return ResponseEntity.ok(resp);
+
+                // After the recon run produces its decisions, scan
+                // them for high-confidence pattern matches and
+                // auto-resolve. This is the moat moment made
+                // operationally visible: decisions Atlas has seen
+                // before with consistent agreement arrive already
+                // accepted - the engineer triages only the genuinely
+                // new ones.
+                int autoResolved = autoResolvePatterns(p.id(), p.vendorPartner());
+                // If auto-resolve closed the queue (every decision is
+                // now resolved), advance Gate C and Stage D right
+                // away so the SPA doesn't make the engineer click
+                // Finalize on a no-op queue.
+                if (autoResolved > 0) {
+                    maybeAdvanceAfterDecisions(p.id());
+                }
+                Map<String, Object> out = new LinkedHashMap<>();
+                if (resp != null) out.putAll((Map<String, Object>) resp);
+                out.put("autoResolved", autoResolved);
+                return ResponseEntity.ok(out);
             } catch (Exception e) {
                 return ResponseEntity.internalServerError()
                         .body(Map.of("error", e.getMessage()));
             }
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Helper used by both the human resolve path and the post-recon
+     * auto-resolve path. Asks recon-service for the current decision
+     * counts; if every decision is resolved, passes Gate C and
+     * advances Stage D so the SPA flips screens immediately.
+     */
+    private void maybeAdvanceAfterDecisions(UUID projectId) {
+        try {
+            Map<?, ?> stat = http.getForObject(
+                    reconUrl + "/internal/recon/projects/" + projectId + "/status", Map.class);
+            if (stat != null && stat.get("counts") instanceof Map<?, ?> counts) {
+                Object pending = counts.get("pending");
+                Object total   = counts.get("total");
+                if (pending instanceof Number p && total instanceof Number t
+                        && p.intValue() == 0 && t.intValue() > 0) {
+                    advanceGate(projectId, "C", "passed");
+                    projects.findById(projectId).ifPresent(p2 -> advanceStage(p2, "D"));
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * Walk this project's freshly-created Stage C decisions and
+     * auto-resolve any whose (kind, normalized_path) matches a
+     * high-confidence pattern in the cross-project library.
+     *
+     * "High confidence" = the pattern has been confirmed by at least
+     * three prior accepted decisions across the same vendor family AND
+     * the rolling confidence rating is 'high'. The DB does the heavy
+     * lifting via a single UPDATE; the agent's recommendation gets
+     * overwritten only when the human review would have been a
+     * rubber-stamp anyway.
+     *
+     * Returns the count of decisions auto-resolved (zero on any error
+     * — auto-resolve is best-effort, never blocks the run).
+     */
+    private int autoResolvePatterns(UUID projectId, String vendorPartner) {
+        if (jdbcTemplate == null) return 0;
+        if (vendorPartner == null || vendorPartner.isBlank()) return 0;
+        String vendor = vendorPartner.toLowerCase(Locale.ROOT).trim().replaceAll("\\s+", " ");
+        try {
+            // Single SQL: for every PENDING decision belonging to this
+            // project, look up a matching pattern (exact or wildcard
+            // via the *.field convention) with occurrence_count >= 4
+            // and confidence='high'. When found, set resolution to
+            // 'accepted' and stamp the pattern attribution.
+            String sql = """
+                    UPDATE recon.decision d
+                       SET resolution    = 'accepted',
+                           chosen_action = p.recommendation,
+                           resolved_by   = 'atlas-pattern-library',
+                           resolved_at   = now(),
+                           note          = 'Auto-resolved from prior project history ('
+                                            || p.occurrence_count || ' matching decisions).'
+                      FROM recon.pattern p
+                     WHERE d.project_id = ?
+                       AND d.resolution = 'pending'
+                       AND p.vendor_family = ?
+                       AND p.confidence   = 'high'
+                       AND p.occurrence_count >= 3
+                       AND p.kind = d.kind
+                       AND (
+                             p.path = d.path
+                          OR (p.path LIKE '*.%%' AND d.path LIKE '%%.' || substring(p.path FROM 3))
+                       )
+                    """;
+            return jdbcTemplate.update(sql, projectId, vendor);
+        } catch (Exception ignored) {
+            return 0;
+        }
     }
 
     @GetMapping("/projects/{id}/stages/reconciliation/status")

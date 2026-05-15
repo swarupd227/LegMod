@@ -69,8 +69,8 @@ function PatternBanner({ pattern }: { pattern: ReconPattern }) {
       <Library size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
       <div className="flex-1 text-xs">
         <div className="font-medium">
-          Pattern library · recommended <span className="font-mono">{pattern.recommendation}</span>
-          {' '}— based on {pattern.occurrence_count} prior migration{pattern.occurrence_count === 1 ? '' : 's'}
+          Atlas suggests <span className="font-mono">{readableAction(pattern.recommendation)}</span>
+          {' '}— learned from {pattern.occurrence_count} similar project{pattern.occurrence_count === 1 ? '' : 's'}
         </div>
         <div className="text-2xs mt-0.5 opacity-90">{pattern.summary}</div>
       </div>
@@ -81,21 +81,25 @@ function PatternBanner({ pattern }: { pattern: ReconPattern }) {
   );
 }
 
+function readableAction(action: string): string {
+  return ACTION_LABEL[action] ?? action;
+}
+
 const KIND_LABEL: Record<string, string> = {
-  format_difference: 'Format difference',
-  type_lenience:     'Type lenience',
-  enum_promotion:    'Enum promotion',
-  missing_vendor:    'Missing in vendor',
-  rename:            'Rename',
-  fault_diff:        'Fault difference'
+  format_difference: 'Format mismatch',
+  type_lenience:     'Loose type',
+  enum_promotion:    'New allowed value',
+  missing_vendor:    'Not in the manual',
+  rename:            'Renamed field',
+  fault_diff:        'Different error type'
 };
 
 const ACTION_LABEL: Record<string, string> = {
-  preserve_legacy:  'Preserve legacy wire shape',
-  adopt_vendor:     'Adopt vendor schema',
-  promote_to_enum:  'Promote to closed enum',
-  add_to_schema:    'Add to authoritative schema',
-  escalate:         'Escalate to SME'
+  preserve_legacy:  'Keep the old format',
+  adopt_vendor:     'Use the manual’s format',
+  promote_to_enum:  'Lock down the allowed values',
+  add_to_schema:    'Add it to the schema',
+  escalate:         'Flag for a human'
 };
 
 export default function Reconciliation({
@@ -355,13 +359,22 @@ function DecisionRow({
         </div>
         <div className="mt-1 flex items-center gap-2 text-2xs text-fg-3">
           <span className="truncate flex-1">{KIND_LABEL[decision.kind] ?? decision.kind}</span>
-          {pattern && (
+          {decision.resolvedBy === 'atlas-pattern-library' && (
+            <span
+              className="inline-flex items-center gap-1 rounded bg-emerald-100 text-emerald-800 px-1.5 py-0.5 font-medium shrink-0"
+              title={decision.note ?? 'Auto-resolved from prior project history'}
+            >
+              <Library size={10} aria-hidden="true" />
+              Atlas decided
+            </span>
+          )}
+          {pattern && decision.resolvedBy !== 'atlas-pattern-library' && (
             <span
               className="inline-flex items-center gap-1 rounded bg-violet-100 text-violet-800 px-1.5 py-0.5 font-medium shrink-0"
               title={pattern.summary}
             >
               <Library size={10} aria-hidden="true" />
-              {pattern.occurrence_count} prior
+              {pattern.occurrence_count} similar
             </span>
           )}
         </div>

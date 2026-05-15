@@ -204,10 +204,10 @@ test('UPLIFT framework migration end-to-end — Spring PetClinic (A → F)', asy
   // Wait for the button to appear (it shows after the GET /forecast
   // 404 resolves) rather than doing a single-shot visibility check
   // that races against the query.
-  const forecastBtn = page.getByRole('button', { name: /Generate forecast/i });
+  const forecastBtn = page.getByRole('button', { name: /Estimate this migration/i });
   await expect(forecastBtn).toBeVisible({ timeout: 15_000 });
   await forecastBtn.click();
-  await expect(page.getByText(/Top risks/i)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/What could slow the team down/i)).toBeVisible({ timeout: 60_000 });
   await page.waitForTimeout(6000);
 
   // ---------- 6. Stage A: Begin inventory scan ----------
@@ -308,15 +308,32 @@ test('UPLIFT framework migration end-to-end — Spring PetClinic (A → F)', asy
   await page.getByRole('button', { name: /Stage D Module Migration/i }).click();
   await page.waitForTimeout(1500);
 
-  // The module migration screen lists the strangler steps as run
-  // candidates. Run the first one to demonstrate OpenRewrite applying
+  // Run the first migration step to demonstrate OpenRewrite applying
   // the accepted recipes to the module's source.
   const runMigrationBtn = page.getByRole('button', { name: /Run migration/i }).first();
   await expect(runMigrationBtn).toBeVisible({ timeout: 15_000 });
   await runMigrationBtn.click();
   // The migration run is fast (OpenRewrite on a small module is
-  // sub-second), but the SPA polls every couple of seconds.
-  await page.waitForTimeout(8000);
+  // sub-second). Wait for the "Changed files" list to populate so
+  // we can dwell on at least one file's diff - that's the wow
+  // moment for the UPLIFT track (real source code being rewritten).
+  await page.waitForTimeout(6000);
+
+  // Click into the first changed file so the right pane shows its
+  // unified diff. The file list is a column inside the run-detail
+  // pane; each entry is a button containing the file path.
+  const fileRowSelector = page.locator('aside, div').filter({ hasText: /Changed files/i })
+                              .locator('ul li button').first();
+  if (await fileRowSelector.isVisible().catch(() => false)) {
+    await fileRowSelector.click();
+    // Hold for a beat so the customer can SEE the modified Java
+    // code, line-by-line removals/additions highlighted.
+    await page.waitForTimeout(7000);
+  } else {
+    // Fallback: just wait longer in case the file list locator
+    // didn't match. Won't fail the test.
+    await page.waitForTimeout(5000);
+  }
 
   await page.getByRole('button', { name: /Finalize Stage D/i }).click();
   await expect(page.getByRole('button', { name: /Stage D Module Migration.*passed/i }))

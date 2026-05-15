@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Plus, ArrowUpRight, FolderOpen,
-  Boxes, GitBranch, ShieldCheck
+  Boxes, GitBranch, ShieldCheck,
+  Library, Building2, Clock
 } from 'lucide-react';
-import { api, Project } from '../api/client';
+import { api, Project, WorkspaceInsights } from '../api/client';
 import { ModeBadge, RiskBadge } from '../components/Badges';
 import {
   EmptyState, LoadingState, ErrorState, Modal, MetricTile,
@@ -39,6 +40,14 @@ export default function WorkspaceDashboard() {
     queryFn: () => api.projects()
   });
 
+  // "Atlas at work" insights - aggregated across all projects in
+  // this workspace. Refreshes alongside the project list.
+  const { data: insights } = useQuery({
+    queryKey: ['workspace-insights'],
+    queryFn: () => api.workspaceInsights(),
+    staleTime: 30_000
+  });
+
   const [showNew, setShowNew] = useState(false);
 
   const stats = computeStats(projects ?? []);
@@ -46,7 +55,7 @@ export default function WorkspaceDashboard() {
 
   return (
     <>
-      <PageHeader onCreate={() => setShowNew(true)} stats={stats} hasProjects={hasProjects} />
+      <PageHeader onCreate={() => setShowNew(true)} stats={stats} hasProjects={hasProjects} insights={insights} />
 
       {error && (
         <ErrorState
@@ -90,8 +99,13 @@ export default function WorkspaceDashboard() {
 /* ---------------- Page header ---------------- */
 
 function PageHeader({
-  onCreate, stats, hasProjects
-}: { onCreate: () => void; stats: Stats; hasProjects: boolean }) {
+  onCreate, stats, hasProjects, insights
+}: {
+  onCreate: () => void;
+  stats: Stats;
+  hasProjects: boolean;
+  insights?: WorkspaceInsights;
+}) {
   return (
     <header>
       <div className="flex items-end justify-between gap-6 flex-wrap">
@@ -101,8 +115,10 @@ function PageHeader({
             Projects
           </h1>
           <p className="mt-2 text-sm text-fg-2 max-w-xl">
-            Track Apache Axis to JAX-WS migrations and Spring/Jakarta uplifts. Each
-            project carries its own knowledge graph, captured corpus, and audit trail.
+            Atlas modernizes legacy software with AI you can audit. Old SOAP
+            services become Spring Boot. Old Spring code becomes the current
+            version. Every decision is recorded; every prior project teaches
+            the next one.
           </p>
         </div>
 
@@ -111,14 +127,80 @@ function PageHeader({
         </button>
       </div>
 
+      {/* Atlas-at-work strip - the compounding-knowledge moat made
+          visible at the workspace level. These four numbers tell the
+          story: "we've done this work before, and the next one is
+          cheaper because of it." */}
+      {hasProjects && insights && (
+        <section
+          aria-labelledby="atlas-at-work-title"
+          className="mt-6 rounded-lg border border-line bg-bg-2 px-5 py-4"
+        >
+          <div className="flex items-center gap-2">
+            <div className="rounded-md bg-brand-50 p-1.5 text-brand-700">
+              <Library size={14} aria-hidden="true" />
+            </div>
+            <h2 id="atlas-at-work-title" className="text-sm font-semibold">
+              Atlas at work in this workspace
+            </h2>
+          </div>
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <KpiTile
+              icon={Boxes}
+              value={insights.projectCount}
+              label="migrations underway"
+            />
+            <KpiTile
+              icon={Library}
+              value={insights.decisionsRemembered}
+              label="decisions remembered"
+              hint={`across ${insights.patternCount} unique patterns`}
+            />
+            <KpiTile
+              icon={Building2}
+              value={insights.vendorCount}
+              label={insights.vendorCount === 1 ? 'vendor system' : 'vendor systems'}
+            />
+            <KpiTile
+              icon={Clock}
+              value={insights.hoursSavedEstimate}
+              label="engineering hours saved"
+              hint="estimated, vs. manual review"
+            />
+          </div>
+        </section>
+      )}
+
       {hasProjects && (
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <MetricTile icon={Boxes}       label="Active projects"  value={stats.active}   tone="brand" />
           <MetricTile icon={GitBranch}   label="Stages in flight" value={stats.inflight} tone="agent" />
           <MetricTile icon={ShieldCheck} label="Gates passed"     value={stats.gates}    tone="ok" />
         </div>
       )}
     </header>
+  );
+}
+
+/* ---------------- KPI tile (Atlas-at-work strip) ---------------- */
+
+function KpiTile({
+  icon: Icon, value, label, hint
+}: {
+  icon: typeof Boxes;
+  value: number;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded border border-line bg-bg-1 p-3">
+      <div className="flex items-center gap-1.5 text-fg-3">
+        <Icon size={13} aria-hidden="true" />
+        <span className="text-2xs uppercase tracking-wide">{label}</span>
+      </div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+      {hint && <div className="text-2xs text-fg-3 mt-0.5">{hint}</div>}
+    </div>
   );
 }
 

@@ -50,15 +50,14 @@ export function MigrationForecastCard({ projectId }: { projectId: string }) {
             <TrendingUp size={20} aria-hidden="true" />
           </div>
           <div className="flex-1">
-            <div className="eyebrow text-brand-700">Migration Forecast</div>
+            <div className="eyebrow text-brand-700">Effort estimate</div>
             <h3 id="forecast-empty-title" className="text-lg font-semibold mt-1">
-              Estimate the migration before paying for Stage A
+              How long will this migration take?
             </h3>
             <p className="text-sm text-fg-2 mt-2 max-w-2xl">
-              Atlas reads the cloned source tree, counts the SOAP operations and
-              custom adapters, then grounds a calibrated effort estimate against
-              prior migrations. You get an honest answer on weeks of work and the
-              top three risks — before the team commits.
+              Atlas reads the code, sees what's there, and gives you an honest
+              answer in plain English — weeks of work, confidence level, and the
+              three things most likely to slow the team down.
             </p>
             <div className="mt-4 flex items-center gap-3">
               <button
@@ -67,9 +66,9 @@ export function MigrationForecastCard({ projectId }: { projectId: string }) {
                 disabled={runM.isPending}
               >
                 <Sparkles size={14} aria-hidden="true" />
-                {runM.isPending ? 'Forecasting…' : 'Generate forecast'}
+                {runM.isPending ? 'Estimating…' : 'Estimate this migration'}
               </button>
-              <span className="text-2xs text-fg-3">~10–15 seconds · one LLM call</span>
+              <span className="text-2xs text-fg-3">~10–15 seconds</span>
             </div>
             {runM.error && (
               <p className="mt-3 text-2xs text-err">
@@ -90,11 +89,11 @@ export function MigrationForecastCard({ projectId }: { projectId: string }) {
     >
       <header className="flex items-center justify-between gap-4">
         <div>
-          <div className="eyebrow text-brand-700">Migration Forecast</div>
+          <div className="eyebrow text-brand-700">Effort estimate</div>
           <h3 id="forecast-title" className="text-lg font-semibold mt-0.5">
-            {weeksHeadline(f)} ·{' '}
+            {weeksHeadline(f)} of work ·{' '}
             <span className={`inline-flex items-center rounded px-2 py-0.5 text-2xs font-medium ${confidenceClasses(f.confidence)}`}>
-              {f.confidence} confidence
+              {f.confidence.toLowerCase()} confidence
             </span>
           </h3>
         </div>
@@ -102,30 +101,30 @@ export function MigrationForecastCard({ projectId }: { projectId: string }) {
           className="btn-ghost btn-sm"
           onClick={() => runM.mutate()}
           disabled={runM.isPending}
-          aria-label="Re-run forecast"
-          title="Re-run forecast"
+          aria-label="Re-estimate"
+          title="Re-estimate"
         >
           <RefreshCw size={13} aria-hidden="true" />
-          {runM.isPending ? 'Forecasting…' : 'Re-run'}
+          {runM.isPending ? 'Estimating…' : 'Re-estimate'}
         </button>
       </header>
 
-      {/* Tiles — high-level structural facts grounding the estimate */}
+      {/* Tiles — high-level facts about the code that drive the estimate */}
       <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-        <Tile icon={Clock} label="Estimated effort"
+        <Tile icon={Clock} label="Estimated time"
               value={`${f.estimatedWeeks} weeks`} />
-        <Tile icon={Target} label="SOAP operations"
+        <Tile icon={Target} label="Service calls found"
               value={`${f.structuralFacts.operationCount ?? 0}`} />
-        <Tile icon={Sparkles} label="Custom adapters"
+        <Tile icon={Sparkles} label="Custom helpers"
               value={`${f.structuralFacts.adapterCount ?? 0}`} />
-        <Tile icon={AlertTriangle} label="Complexity flags"
+        <Tile icon={AlertTriangle} label="Things to watch"
               value={(f.structuralFacts.complexityFlags?.length ?? 0).toString()}
               hint={(f.structuralFacts.complexityFlags ?? []).slice(0, 3).join(' · ') || 'none'} />
       </dl>
 
       {/* Risks */}
       <div className="mt-5">
-        <div className="eyebrow mb-2">Top risks</div>
+        <div className="eyebrow mb-2">What could slow the team down</div>
         <ol className="space-y-2">
           {f.topRisks.map((r, i) => (
             <li key={i} className="rounded border border-line bg-bg-1 p-3">
@@ -154,7 +153,7 @@ export function MigrationForecastCard({ projectId }: { projectId: string }) {
           onClick={() => setExpandedRationale(v => !v)}
           aria-expanded={expandedRationale}
         >
-          <span className="eyebrow">Rationale</span>
+          <span className="eyebrow">Why Atlas thinks so</span>
           {expandedRationale
             ? <ChevronUp size={14} aria-hidden="true" />
             : <ChevronDown size={14} aria-hidden="true" />}

@@ -262,16 +262,15 @@ test('SOAP migration end-to-end — Apache WS-I Supply Chain sample (A → B)', 
   await expect(page.getByRole('heading', { name: /Code Archaeology/i })).toBeVisible();
   await page.waitForTimeout(1500);
 
-  const forecastBtn = page.getByRole('button', { name: /Generate forecast/i });
+  const forecastBtn = page.getByRole('button', { name: /Estimate this migration/i });
   if (await forecastBtn.isVisible().catch(() => false)) {
     await forecastBtn.click();
     // The Forecast service walks the source via arch-service /peek
     // (no LLM, sub-second), then makes one sonnet call (~10-15s).
-    // The "Top risks" header is the strongest done-signal — it only
-    // appears after the LLM result is parsed.
-    await expect(page.getByText(/Top risks/i)).toBeVisible({ timeout: 60_000 });
-    // Hold a full beat — this is the "before you pay for Stage A, here
-    // is what the migration will cost" moment in the voice-over.
+    // The "What could slow the team down" header is the done-signal —
+    // it only renders once the LLM result is parsed into top risks.
+    await expect(page.getByText(/What could slow the team down/i))
+          .toBeVisible({ timeout: 60_000 });
     await page.waitForTimeout(6000);
   }
 
@@ -349,29 +348,39 @@ test('SOAP migration end-to-end — Apache WS-I Supply Chain sample (A → B)', 
 
   // "Begin reconciliation" — the agent loads vendor WSDL + captured
   // envelopes + the code-derived schema, merges them, and produces
-  // decisions for every divergence.
+  // decisions for every divergence. The post-run pass in prj-service
+  // ALSO auto-resolves high-confidence pattern matches: for the
+  // Apache vendor family in the seeded library, that's accountId /
+  // fundSymbol / tradeDate. So most decisions arrive already accepted
+  // with an "Atlas decided" badge.
   await page.getByRole('button', { name: /Begin reconciliation/i }).click();
-  // The recon agent does its own Anthropic round-trips for each
-  // decision; 3-5 ops typically take ~20-30 s.
+
+  // Switch to the "All" filter so the auto-resolved decisions are
+  // visible (the default filter is "Pending" — which would show an
+  // empty list because Atlas already handled them).
+  await expect(page.getByRole('button', { name: /Begin reconciliation/i })).toBeHidden({ timeout: 120_000 }).catch(() => {});
+  await page.waitForTimeout(2000);
+  const allFilter = page.getByRole('button', { name: /^All\b/i }).first();
+  if (await allFilter.isVisible().catch(() => false)) {
+    await allFilter.click();
+    await page.waitForTimeout(1500);
+  }
+
   await expect(page.getByText(/accountId|fundSymbol|tradeDate/i).first())
-        .toBeVisible({ timeout: 120_000 });
+        .toBeVisible({ timeout: 60_000 });
   await page.waitForTimeout(3000);   // viewer reads the decision cards
 
-  // Drill into the first decision to surface the agent's rationale.
-  // The decision card layout: vendor / code / empirical columns + a
-  // right pane with the agent's recommendation + Accept button.
+  // Drill into the first decision so the right pane shows the agent's
+  // rationale, the three-way comparison, AND the new "Atlas decided"
+  // attribution — the moment the customer sees Atlas auto-resolve a
+  // decision based on prior project history.
   await page.getByText(/accountId/i).first().click();
-  // Hold — this is the wow moment for two reasons. The recon agent's
-  // three-way rationale fills the center pane, AND the cross-project
-  // pattern-library banner ("Recommended preserve_legacy — based on 4
-  // prior migrations") sits directly above the comparison columns,
-  // showing that Atlas isn't guessing — it's pattern-matched against
-  // the ground truth from prior migrations.
   await page.waitForTimeout(6000);
 
-  // Accept each pending decision in turn. The SPA doesn't auto-advance
-  // to the next decision after Accept, so we click each pending card
-  // in the left list before clicking Accept.
+  // For any decisions that ARE still pending (vendor not in seed
+  // library, or pattern library has occurrence_count < 3), accept
+  // them manually. With the Apache seed all three typical decisions
+  // auto-resolve, so this loop is usually a no-op.
   for (const field of ['accountId', 'fundSymbol', 'tradeDate']) {
     const card = page.getByText(new RegExp(`Request\\.${field}`, 'i')).first();
     if (await card.isVisible().catch(() => false)) {

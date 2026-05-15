@@ -33,22 +33,32 @@ public class ClosureDocAgent {
             crisp, factual prose — no marketing tone, no emojis. You receive
             a JSON snapshot of every stage (project metadata, operations,
             adapters, captured envelopes, reconciliation decisions, generated
-            files, differential diff buckets). Use ONLY facts present in the
-            snapshot — do not invent counts, decisions, or risks.
+            files, differential diff buckets, and Atlas-attributed
+            accelerators). Use ONLY facts present in the snapshot — do not
+            invent counts, decisions, or risks.
 
-            Output FORMAT: GitHub-flavoured markdown, exactly these H2 sections
-            in this order, each 1-3 short paragraphs:
+            Output FORMAT: GitHub-flavoured markdown, exactly these H2
+            sections in this order, each 1-3 short paragraphs:
 
               ## Scope and target
               ## Approach
+              ## How Atlas helped
               ## Notable decisions
               ## Test coverage
               ## Residual risks
               ## Recommended pre-production gates
               ## Maintenance notes
 
+            The "How Atlas helped" section is a plain-language summary of
+            the accelerators Atlas applied during this engagement. Use the
+            atlas_acceleration object in the snapshot: number of decisions
+            Atlas auto-resolved from prior project history, how the
+            forecast compared to actual elapsed time, and how many vendor
+            patterns matched. Write it for the CISO, not the engineer —
+            no jargon. Concrete numbers. One short paragraph.
+
             No preamble before the first H2. No conclusion after the last.
-            Keep the whole document under ~700 words.
+            Keep the whole document under ~800 words.
             """;
 
     private final RestTemplate http;
@@ -116,8 +126,48 @@ public class ClosureDocAgent {
         m.put("counts", counts);
         m.put("first_three_decisions", takeFirst(getNested(s.reconStatus, "decisions"), 3));
         m.put("first_three_red_diffs", takeFirstFiltered(getNested(s.diffStatus, "divergences"), "red", 3));
+
+        // "How Atlas helped" inputs - tells the closure agent what
+        // accelerators to attribute. Counts of decisions auto-resolved
+        // by the cross-project pattern library, plus the forecast vs.
+        // actual elapsed time if both are available.
+        m.put("atlas_acceleration", atlasAcceleration(s));
         try { return json.writeValueAsString(m); }
         catch (Exception e) { return "{}"; }
+    }
+
+    /**
+     * Gather the inputs for the closure document's "How Atlas helped"
+     * section. The reconStatus snapshot already contains every
+     * decision's resolvedBy field; we just need to count the ones
+     * stamped 'atlas-pattern-library' so the agent can name an actual
+     * number rather than hand-wave.
+     */
+    private Map<String, Object> atlasAcceleration(ProjectFacts.Snapshot s) {
+        long total = asLong(getNested(s.reconStatus, "counts", "total"));
+        long autoResolved = 0;
+        Object decsObj = getNested(s.reconStatus, "decisions");
+        if (decsObj instanceof java.util.List<?> decs) {
+            for (Object d : decs) {
+                if (d instanceof Map<?, ?> md) {
+                    Object rb = md.get("resolvedBy");
+                    if (rb != null && "atlas-pattern-library".equals(rb.toString())) {
+                        autoResolved++;
+                    }
+                }
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("decisions_total",         total);
+        out.put("decisions_auto_resolved", autoResolved);
+        out.put("decisions_human_review",  Math.max(0, total - autoResolved));
+        // The forecast/actual gap requires prj-service to surface
+        // these numbers in the snapshot - not threaded yet, so we
+        // emit a marker the agent will gracefully omit. Adding the
+        // wire-up is a future iteration.
+        out.put("forecast_weeks_estimate", getNested(s.project, "forecastWeeks"));
+        out.put("forecast_confidence",     getNested(s.project, "forecastConfidence"));
+        return out;
     }
 
     private Map<String, Object> project(ProjectFacts.Snapshot s) {
@@ -143,6 +193,30 @@ public class ClosureDocAgent {
         long benign = asLong(getNested(s.diffStatus, "run", "benignCount"));
         long pass  = asLong(getNested(s.diffStatus, "run", "passCount"));
 
+        // Count of decisions Atlas auto-resolved from prior history.
+        long autoResolved = 0;
+        Object decsObj = getNested(s.reconStatus, "decisions");
+        if (decsObj instanceof java.util.List<?> decs) {
+            for (Object d : decs) {
+                if (d instanceof Map<?, ?> md && "atlas-pattern-library".equals(
+                        md.get("resolvedBy") == null ? "" : md.get("resolvedBy").toString())) {
+                    autoResolved++;
+                }
+            }
+        }
+        long humanReview = Math.max(0, decTotal - autoResolved);
+
+        String atlasHelped = autoResolved > 0
+            ? ("Atlas auto-resolved " + autoResolved + " of " + decTotal
+               + " schema decisions from prior project history — the team reviewed only "
+               + humanReview + ". Every auto-resolution carries the same audit trail as a "
+               + "human-approved one. Source: Atlas cross-project pattern library.")
+            : ("Atlas applied " + ops + " agent-generated narratives, " + decTotal
+               + " three-way schema decisions, and " + pass + " replayed wire-shape "
+               + "comparisons during this engagement. Pattern-library auto-resolutions: 0 "
+               + "(first engagement for this vendor profile; subsequent migrations will "
+               + "benefit from the decisions recorded here).");
+
         return ("""
                 ## Scope and target
 
@@ -155,9 +229,13 @@ public class ClosureDocAgent {
                 Stage B captured %,d wire envelopes against the live partner endpoint and
                 sanitised them at the edge. Stage C reconciled the vendor WSDL, the
                 code-derived schema, and the empirical schema; %d of %d divergences were
-                resolved by the engineer. Stage D generated %,d Java JAX-WS source files
-                via wsimport against the Authoritative WSDL. Stage E replayed the captured
-                corpus through the regenerated wire shape and triaged differences.
+                resolved. Stage D generated %,d Java JAX-WS source files via wsimport
+                against the Authoritative WSDL. Stage E replayed the captured corpus
+                through the regenerated wire shape and triaged differences.
+
+                ## How Atlas helped
+
+                %s
 
                 ## Notable decisions
 
@@ -188,6 +266,7 @@ public class ClosureDocAgent {
                 p.getOrDefault("targetFramework", "—"),
                 ops, adapters, envs,
                 decResolved, decTotal, files,
+                atlasHelped,
                 pass, benign, amber, red,
                 red > 0
                     ? red + " red-bucket divergence(s) remain unresolved — see `differential.json`"
