@@ -11,6 +11,7 @@ import {
   Tabs, TabPanel, IconButton, MarkdownView,
   useStageChrome, useAnnouncer
 } from '../components/ui';
+import { BuildTestPanel } from './BuildTestPanel';
 
 export default function ReportsHub({
   projectId, project
@@ -91,16 +92,26 @@ export default function ReportsHub({
 
   const bundle = status?.bundle;
   if (!bundle) {
-    return <NotBuilt onBuild={() => buildM.mutate()} building={buildM.isPending} project={project} />;
+    return (
+      <div className="p-5 space-y-5">
+        <BuildTestPanel projectId={projectId} track="SOAP" />
+        <NotBuilt onBuild={() => buildM.mutate()} building={buildM.isPending} project={project} />
+      </div>
+    );
   }
 
   return (
-    <TwoPane
-      rail="default"
-      left={<ManifestPane bundle={bundle} project={project} />}
-    >
-      <ClosurePane closure={closure} bundle={bundle} />
-    </TwoPane>
+    <div className="space-y-5">
+      <div className="px-5 pt-5">
+        <BuildTestPanel projectId={projectId} track="SOAP" />
+      </div>
+      <TwoPane
+        rail="default"
+        left={<ManifestPane bundle={bundle} project={project} />}
+      >
+        <ClosurePane closure={closure} bundle={bundle} />
+      </TwoPane>
+    </div>
   );
 }
 

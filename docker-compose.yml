@@ -346,6 +346,11 @@ services:
       MINIO_BUCKET_ARTIFACTS: ${MINIO_BUCKET_ARTIFACTS:-atlas-artifacts}
       ARCH_SERVICE_URL: http://arch-service:8083
       PROV_SERVICE_URL: http://prov-service:8091
+    volumes:
+      # Read-write so the Stage F Build & Test gate can run
+      # `mvn test` inside the UPLIFT project's source tree (mvn
+      # writes target/, target/test-classes/, etc).
+      - .\uploads:/uploads
     ports:
       - "${PORT_GEN:-8087}:8087"
 

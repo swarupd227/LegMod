@@ -22,6 +22,14 @@ export type ReconPattern = {
   confidence: 'low' | 'medium' | 'high';
   first_seen_at?: string;
   last_seen_at?: string;
+  // Provenance — populated by V3__pattern_provenance migration.
+  // The pattern banner uses these to show the customer where each
+  // recommendation actually came from (which Nous engagement, which
+  // engineer, when).
+  first_seen_engagement?: string;
+  confirmed_by?: string;
+  /** Raw JSON text; engagement entries are { engagement, completed, engineer, outcome }. */
+  engagement_history?: string;
 };
 
 export type ReconPatternsResponse = {
@@ -29,6 +37,32 @@ export type ReconPatternsResponse = {
   count: number;
   patterns: ReconPattern[];
 };
+
+/**
+ * Stage F Build & Test gate result. The gate runs `mvn compile` (SOAP)
+ * or `mvn test` (UPLIFT) in a sandboxed JVM and reports back what
+ * actually happened: did the code build, did the tests pass, which
+ * ones failed. This is the enterprise-readiness checkpoint between
+ * "Atlas generated some code" and "you can ship this".
+ */
+export type BuildTestRun = {
+  id: string;
+  projectId: string;
+  status: 'running' | 'passed' | 'compile_failed' | 'tests_failed' | 'sandbox_limited' | 'error';
+  track: string;
+  filesCompiled: number;
+  compileErrors: number;
+  testsTotal: number;
+  testsPassed: number;
+  testsFailed: number;
+  testsSkipped: number;
+  durationMs?: number;
+  logText?: string;
+  failures?: string[];
+  startedAt?: string;
+  finishedAt?: string;
+};
+export type BuildTestResult = BuildTestRun & { runId: string };
 
 /**
  * Atlas-at-work numbers shown on the workspace dashboard. Aggregated
@@ -1022,6 +1056,21 @@ export const api = {
   },
   ingestStatus: (projectId: string) =>
     http<IngestStatus>(`/api/v1/projects/${projectId}/sources/status`),
+
+  // ---------------------------------------------------------------
+  // Stage F · Build & Test gate. SOAP: javac/mvn compile against the
+  // wsimport-generated tree. UPLIFT: mvn test against the OpenRewrite-
+  // modified source. Surfaces pass/fail counts + failure names.
+  // ---------------------------------------------------------------
+  runBuildTest: (projectId: string) =>
+    http<BuildTestResult>(
+      `/api/v1/projects/${projectId}/stages/build/run`,
+      { method: 'POST' }
+    ),
+  buildTestStatus: (projectId: string) =>
+    http<{ run: BuildTestRun | null }>(
+      `/api/v1/projects/${projectId}/stages/build/status`
+    ),
 
   // ---------------------------------------------------------------
   // Workspace insights - the "Atlas at work" KPI strip on the

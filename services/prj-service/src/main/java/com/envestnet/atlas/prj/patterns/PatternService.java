@@ -103,10 +103,16 @@ public class PatternService {
         String vendor = normalizeVendor(p.get().vendorPartner());
         if (vendor.isBlank()) return List.of();
 
+        // The provenance columns (first_seen_engagement, confirmed_by,
+        // engagement_history) tell the customer where each pattern came
+        // from. The SPA renders these as inspectable history under the
+        // pattern banner.
         return jdbc.queryForList("""
                 SELECT vendor_family, kind, path, recommendation, summary,
                        occurrence_count, confidence,
-                       first_seen_at, last_seen_at
+                       first_seen_at, last_seen_at,
+                       first_seen_engagement, confirmed_by,
+                       engagement_history::text AS engagement_history
                   FROM recon.pattern
                  WHERE vendor_family = ?
                  ORDER BY occurrence_count DESC, last_seen_at DESC

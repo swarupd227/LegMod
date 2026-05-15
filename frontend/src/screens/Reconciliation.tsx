@@ -60,23 +60,56 @@ function PatternBanner({ pattern }: { pattern: ReconPattern }) {
     pattern.confidence === 'high'   ? 'bg-violet-100 text-violet-900 border-violet-200'
   : pattern.confidence === 'medium' ? 'bg-violet-50  text-violet-800 border-violet-100'
                                      : 'bg-bg-2       text-fg-2       border-line';
+
+  // Parse provenance JSON safely. Each entry is one prior engagement
+  // that confirmed this pattern - we show the engineer who did the
+  // confirmation and the engagement they did it on, so the customer
+  // sees exactly which prior Nous projects validated the suggestion.
+  let history: Array<{ engagement: string; completed: string; engineer: string; outcome?: string }> = [];
+  try {
+    if (pattern.engagement_history) {
+      history = JSON.parse(pattern.engagement_history);
+    }
+  } catch {}
+
   return (
     <div
-      className={`mt-3 rounded border ${conf} px-3 py-2 flex items-start gap-2`}
+      className={`mt-3 rounded border ${conf} px-3 py-2.5`}
       role="note"
       aria-label="Pattern-library recommendation"
     >
-      <Library size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-      <div className="flex-1 text-xs">
-        <div className="font-medium">
-          Atlas suggests <span className="font-mono">{readableAction(pattern.recommendation)}</span>
-          {' '}— learned from {pattern.occurrence_count} similar project{pattern.occurrence_count === 1 ? '' : 's'}
+      <div className="flex items-start gap-2">
+        <Library size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+        <div className="flex-1 text-xs">
+          <div className="font-medium">
+            Atlas suggests <span className="font-mono">{readableAction(pattern.recommendation)}</span>
+            {' '}— learned from {pattern.occurrence_count} similar project{pattern.occurrence_count === 1 ? '' : 's'}
+          </div>
+          <div className="text-2xs mt-0.5 opacity-90">{pattern.summary}</div>
         </div>
-        <div className="text-2xs mt-0.5 opacity-90">{pattern.summary}</div>
+        <span className="text-2xs uppercase tracking-wide font-medium shrink-0">
+          {pattern.confidence}
+        </span>
       </div>
-      <span className="text-2xs uppercase tracking-wide font-medium shrink-0">
-        {pattern.confidence}
-      </span>
+
+      {history.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-violet-200/60">
+          <div className="text-2xs uppercase tracking-wide font-medium opacity-75 mb-1">
+            Confirmed by Nous engineers across:
+          </div>
+          <ul className="text-2xs space-y-0.5">
+            {history.slice(0, 4).map((h, i) => (
+              <li key={i} className="flex items-center gap-2 opacity-90">
+                <span className="font-medium">{h.engagement}</span>
+                <span className="opacity-60">·</span>
+                <span>{h.engineer}</span>
+                <span className="opacity-60">·</span>
+                <span className="font-mono">{h.completed}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

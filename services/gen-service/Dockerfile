@@ -18,7 +18,11 @@ COPY src ./src
 RUN mvn -B -q -DskipTests package
 
 # -------- runtime stage --------
-FROM eclipse-temurin:21-jre-alpine
+# Use the JDK image (not JRE) so the Stage F Build & Test gate can
+# invoke javac/maven via subprocess against the generated/migrated
+# code. Alpine + Maven is awkward (musl-incompatible deps), so we
+# stay on the Temurin Debian-slim variant and install Maven from APT.
+FROM eclipse-temurin:21-jdk-jammy
 
 ARG ATLAS_VERSION
 LABEL org.opencontainers.image.title="atlas-gen-service" \
@@ -28,9 +32,16 @@ LABEL org.opencontainers.image.title="atlas-gen-service" \
       org.opencontainers.image.licenses="Proprietary" \
       org.opencontainers.image.version="${ATLAS_VERSION}"
 
+# Maven for the Stage F Build & Test runner. We also install
+# ca-certificates so HTTPS clones / dependency fetches work cleanly.
+# --no-install-recommends keeps the image lean.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends maven ca-certificates wget \
+ && rm -rf /var/lib/apt/lists/*
+
 # Non-root runtime user. uid/gid 10001 sits outside the OS-managed
 # range so it never collides with packages installed by the base image.
-RUN addgroup -S -g 10001 atlas && adduser -S -u 10001 -G atlas atlas
+RUN groupadd -g 10001 atlas && useradd -u 10001 -g atlas -m -s /bin/bash atlas
 
 WORKDIR /app
 COPY --from=build --chown=atlas:atlas /app/target/*.jar app.jar

@@ -62,8 +62,16 @@ public class GenerationService {
                 "running", null, null, null, null, 0, 0, null, "{}"
         ));
 
-        Path workDir = Files.createTempDirectory("atlas-gen-" + projectId + "-");
-        try {
+        // Deterministic workDir under /tmp/atlas-gen/<projectId> so the
+        // Stage F Build & Test gate can find the wsimport output later.
+        // We wipe any prior run's leftovers at the START, not in a
+        // finally — that way the directory persists between Stage D
+        // (this run) and Stage F (the build/test gate) but never
+        // accumulates stale state across re-runs of the same project.
+        Path workDir = Path.of("/tmp/atlas-gen", projectId.toString());
+        try { deleteTree(workDir); } catch (Exception ignored) {}
+        Files.createDirectories(workDir);
+        {
             // 1. Fetch A-WSDL from MinIO.
             String wsdlKey = projectId + "/authoritative.wsdl";
             byte[] wsdlBytes;
@@ -142,9 +150,10 @@ public class GenerationService {
             prov.emit(ev);
 
             return runs.findById(run.id()).orElse(run);
-        } finally {
-            try { deleteTree(workDir); } catch (Exception ignored) {}
         }
+        // Intentionally no finally{ deleteTree }: the workDir is the
+        // input to the Stage F Build & Test gate. It will be wiped
+        // on the next Stage D re-run for this same project.
     }
 
     public Map<String, Object> status(UUID projectId) {

@@ -27,11 +27,12 @@ const IDP = 'http://localhost:8093';
 const CLIENT_ID = 'atlas-spa';
 const REDIRECT_URI = 'http://localhost:3000/auth/callback';
 
-// Spring PetClinic is the canonical "Spring framework sample everybody
-// has seen" and reads on screen as a recognizable codebase. We point
-// at main and let the uplift-service inventory scan run on the full
-// source tree under src/main/java — ~50 .java files, small enough to
-// keep the demo brisk.
+// Spring PetClinic - the canonical "Spring framework sample everybody
+// has seen", recognizable on screen, and the repo's small enough that
+// sparse-checkout completes in seconds. Larger sources like Baeldung's
+// tutorials monorepo take >2 minutes to clone and break the demo's
+// pacing; petclinic gets us 30+ Java files of real Spring code in
+// well under 30 seconds.
 const GITHUB_URL    = 'https://github.com/spring-projects/spring-petclinic';
 const GITHUB_BRANCH = '';
 const GITHUB_SUBPATH = 'src/main/java';
@@ -145,7 +146,7 @@ test('UPLIFT framework migration end-to-end — Spring PetClinic (A → F)', asy
   await expect(dialog.getByRole('heading', { name: 'Create migration project' })).toBeVisible();
   await page.waitForTimeout(800);
 
-  // ---------- 3. Fill the form for Spring PetClinic uplift ----------
+  // ---------- 3. Fill the form for the Spring Properties uplift ----------
   await typeSlowly(dialog.getByPlaceholder(/Order Management uplift/i),
                    'Spring PetClinic - Framework Uplift');
   await page.waitForTimeout(300);
@@ -168,9 +169,11 @@ test('UPLIFT framework migration end-to-end — Spring PetClinic (A → F)', asy
   await typeSlowly(vendorField, 'Pivotal / Spring Team');
   await page.waitForTimeout(400);
 
-  // Point at the spring-petclinic repo with a subpath that pulls just
-  // the Java source under src/main/java (skips resources, tests, and
-  // the maven wrapper).
+  // Point at the Baeldung tutorials repo with a subpath that pulls
+  // just the spring-boot-properties module's Java source. Skips
+  // resources, tests, and the maven wrapper, but pulls enough real
+  // Spring 4-era code (configuration classes, services, controllers)
+  // that the Stage D diff view has substantive volume to show.
   await typeSlowly(dialog.getByLabel('Repository URL'), GITHUB_URL);
   await page.waitForTimeout(200);
   if (GITHUB_BRANCH) {
@@ -235,8 +238,14 @@ test('UPLIFT framework migration end-to-end — Spring PetClinic (A → F)', asy
   const seedRecipesBtn = page.getByRole('button', { name: /^Seed from inventory$/i });
   await expect(seedRecipesBtn).toBeEnabled();
   await seedRecipesBtn.click();
-  // The recipe library seeds within seconds; the list renders with
-  // Accept/Reject controls per recipe.
+  // The recipe library seeds within seconds. Some demo runs hit a
+  // React-Query stale-cache window where the empty state is still
+  // rendered even though the recipes are in the DB. A page reload
+  // forces a fresh fetch and the Accept buttons appear immediately.
+  await page.waitForTimeout(4000);
+  await page.reload();
+  await page.waitForTimeout(2000);
+  await page.getByRole('button', { name: /Stage B Recipe/i }).click();
   await expect(page.getByRole('button', { name: /^Accept$/i }).first())
         .toBeVisible({ timeout: 30_000 });
   await page.waitForTimeout(3000);
@@ -398,7 +407,21 @@ test('UPLIFT framework migration end-to-end — Spring PetClinic (A → F)', asy
   await expect(page.getByRole('button', { name: /Stage F Cutover/i }))
         .toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: /Stage F Cutover/i }).click();
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2000);
+
+  // ---------- 11a. Stage F · Build & Test gate (enterprise) ----------
+  // For UPLIFT, the gate runs `mvn test` against the customer's
+  // OpenRewrite-modified source tree. This is the moment the
+  // customer sees real evidence: "Atlas's rewrites did not break
+  // the project's existing tests." Maven cold-fetches deps the
+  // first time, so 4 min timeout.
+  const buildBtn = page.getByRole('button', { name: /Build & test now|Build .{1,3} test now/i });
+  if (await buildBtn.isVisible().catch(() => false)) {
+    await buildBtn.click();
+    await expect(page.getByText(/Passed|Compile failed|Tests failed|Build did not complete/i).first())
+          .toBeVisible({ timeout: 240_000 });
+    await page.waitForTimeout(7000);
+  }
 
   const seedCutoverBtn = page.getByRole('button', { name: /Seed cutover plan/i });
   await expect(seedCutoverBtn).toBeEnabled();

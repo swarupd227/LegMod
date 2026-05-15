@@ -1303,6 +1303,12 @@ public class ProjectController {
      * auto-resolve path. Asks recon-service for the current decision
      * counts; if every decision is resolved, passes Gate C and
      * advances Stage D so the SPA flips screens immediately.
+     *
+     * Auto-resolve writes directly to recon.decision via JDBC, bypassing
+     * recon-service's resolve() method — which is the method that
+     * normally triggers Authoritative-WSDL synthesis. So when we detect
+     * a closed queue here, we ALSO call recon-service's /wsdl/synth
+     * endpoint explicitly to make sure Stage D can find its inputs.
      */
     private void maybeAdvanceAfterDecisions(UUID projectId) {
         try {
@@ -1315,6 +1321,13 @@ public class ProjectController {
                         && p.intValue() == 0 && t.intValue() > 0) {
                     advanceGate(projectId, "C", "passed");
                     projects.findById(projectId).ifPresent(p2 -> advanceStage(p2, "D"));
+                    // Force Authoritative-WSDL synthesis since the
+                    // auto-resolve path didn't go through ReconciliationService.resolve().
+                    try {
+                        http.postForObject(
+                                reconUrl + "/internal/recon/projects/" + projectId + "/wsdl/synth",
+                                null, Map.class);
+                    } catch (Exception ignored) {}
                 }
             }
         } catch (Exception ignored) {}
@@ -1438,6 +1451,57 @@ public class ProjectController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /* ---------------- Stage F · Build & Test gate ---------------- */
+
+    /**
+     * Run the Stage F Build & Test gate for a project.
+     *
+     * <p>Two modes:
+     * <ul>
+     *   <li><strong>SOAP track</strong>: compiles the wsimport-generated
+     *       Java tree (gen-service synthesises a pom.xml in the
+     *       sandbox and runs {@code mvn compile}). Demonstrates the
+     *       generated stubs are actually buildable.</li>
+     *   <li><strong>UPLIFT track</strong>: runs {@code mvn test}
+     *       against the customer's source tree (which OpenRewrite
+     *       has already modified in place). Demonstrates the
+     *       project's existing unit tests still pass after Atlas's
+     *       rewrites.</li>
+     * </ul>
+     */
+    @PostMapping("/projects/{id}/stages/build/run")
+    public ResponseEntity<?> runBuildTest(@PathVariable UUID id) {
+        return findWritable(id).map(p -> {
+            HttpHeaders h = new HttpHeaders();
+            h.setContentType(MediaType.APPLICATION_JSON);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("track",       p.mode());
+            body.put("sourcePath",  p.sourcePath());
+            body.put("basePackage", "com.envestnet.broadridge");
+            try {
+                Map<?, ?> resp = http.postForObject(
+                        genUrl + "/internal/generation/projects/" + p.id() + "/build",
+                        new HttpEntity<>(body, h), Map.class);
+                return ResponseEntity.ok(resp);
+            } catch (Exception e) {
+                return ResponseEntity.internalServerError()
+                        .body(Map.of("error", e.getMessage()));
+            }
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/projects/{id}/stages/build/status")
+    public ResponseEntity<?> buildStatus(@PathVariable UUID id) {
+        if (!canReadProject(id)) return ResponseEntity.notFound().build();
+        try {
+            Map<?, ?> resp = http.getForObject(
+                    genUrl + "/internal/generation/projects/" + id + "/build/status", Map.class);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            return ResponseEntity.ok(Map.of("run", null));
         }
     }
 

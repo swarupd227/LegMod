@@ -352,14 +352,25 @@ test('SOAP migration end-to-end — Apache WS-I Supply Chain sample (A → B)', 
   // ALSO auto-resolves high-confidence pattern matches: for the
   // Apache vendor family in the seeded library, that's accountId /
   // fundSymbol / tradeDate. So most decisions arrive already accepted
-  // with an "Atlas decided" badge.
+  // with an "Atlas decided" badge — AND the gate closes, advancing
+  // the SPA to Stage D automatically.
   await page.getByRole('button', { name: /Begin reconciliation/i }).click();
 
-  // Switch to the "All" filter so the auto-resolved decisions are
-  // visible (the default filter is "Pending" — which would show an
-  // empty list because Atlas already handled them).
-  await expect(page.getByRole('button', { name: /Begin reconciliation/i })).toBeHidden({ timeout: 120_000 }).catch(() => {});
+  // Wait until the chrome shows Stage C as "passed" (auto-resolve
+  // closed the queue) OR Stage D is reachable. Either signal means
+  // the recon run + auto-resolve are done.
+  await expect(page.getByRole('button', { name: /Stage C Schema Reconciliation, passed/i }).first())
+        .toBeVisible({ timeout: 180_000 });
+
+  // The SPA has already swapped the active pane to Stage D. Navigate
+  // BACK to Stage C so the recording captures the auto-resolved
+  // decision cards (with their "Atlas decided" badges) and the
+  // pattern-library provenance.
+  await page.getByRole('button', { name: /Stage C Schema Reconciliation/i }).click();
   await page.waitForTimeout(2000);
+
+  // Switch to the "All" filter so the auto-resolved decisions show.
+  // (Default filter is "Pending" — which is empty after auto-resolve.)
   const allFilter = page.getByRole('button', { name: /^All\b/i }).first();
   if (await allFilter.isVisible().catch(() => false)) {
     await allFilter.click();
@@ -367,7 +378,7 @@ test('SOAP migration end-to-end — Apache WS-I Supply Chain sample (A → B)', 
   }
 
   await expect(page.getByText(/accountId|fundSymbol|tradeDate/i).first())
-        .toBeVisible({ timeout: 60_000 });
+        .toBeVisible({ timeout: 30_000 });
   await page.waitForTimeout(3000);   // viewer reads the decision cards
 
   // Drill into the first decision so the right pane shows the agent's
@@ -477,7 +488,24 @@ test('SOAP migration end-to-end — Apache WS-I Supply Chain sample (A → B)', 
         .toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(1500);
   await page.getByRole('button', { name: /Stage F Reports/i }).click();
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2000);
+
+  // ---------- 14a. Stage F · Build & Test gate (enterprise) ----------
+  // Before the bundle, Atlas compiles the wsimport-generated tree and
+  // surfaces the pass/fail result. "Build & test now" kicks off
+  // `mvn compile` in a sandboxed JVM; the panel shows tiles for
+  // files compiled, compile errors, tests passed/failed.
+  const buildBtn = page.getByRole('button', { name: /Build & test now|Build .{1,3} test now/i });
+  if (await buildBtn.isVisible().catch(() => false)) {
+    await buildBtn.click();
+    // Wait for a result tile or the "Passed" / "failed" status to
+    // appear (whichever comes first). Maven first run cold-fetches
+    // dependencies so allow up to 4 minutes.
+    await expect(page.getByText(/Passed|Compile failed|Tests failed|Build did not complete/i).first())
+          .toBeVisible({ timeout: 240_000 });
+    // Hold so the viewer reads the tiles + status banner.
+    await page.waitForTimeout(6000);
+  }
 
   // "Build migration package" — assembles every produced artefact
   // (authoritative WSDL, bindings.xjb, generated Java zip, decisions

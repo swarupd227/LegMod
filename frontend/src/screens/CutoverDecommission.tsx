@@ -11,6 +11,7 @@ import {
   TwoPane, EmptyState, LoadingState, ErrorState, MarkdownView,
   IconButton, useStageChrome, useAnnouncer
 } from '../components/ui';
+import { BuildTestPanel } from './BuildTestPanel';
 
 const STATE_FLOW: Cutover['state'][] = ['planned', 'shadow', 'canary', 'live'];
 
@@ -124,12 +125,21 @@ export default function CutoverDecommission({
   const selected = s.cutovers.find(c => c.id === selectedId) ?? s.cutovers[0];
 
   if (empty) {
-    return <NotStarted onSeed={() => seedM.mutate()} seeding={seedM.isPending}
-                       error={seedError} project={project} />;
+    return (
+      <div className="p-5 space-y-5">
+        <BuildTestPanel projectId={projectId} track="UPLIFT" />
+        <NotStarted onSeed={() => seedM.mutate()} seeding={seedM.isPending}
+                    error={seedError} project={project} />
+      </div>
+    );
   }
 
   return (
-    <>
+    <div className="space-y-5">
+      <div className="px-5 pt-5">
+        <BuildTestPanel projectId={projectId} track="UPLIFT" />
+      </div>
+
       {showClosure && (
         <ClosureDocumentDrawer projectId={projectId} onClose={() => setShowClosure(false)} />
       )}
@@ -153,7 +163,7 @@ export default function CutoverDecommission({
             />
           : <div className="p-8 text-fg-3 text-sm">Select a cutover to plan.</div>}
       </TwoPane>
-    </>
+    </div>
   );
 }
 
