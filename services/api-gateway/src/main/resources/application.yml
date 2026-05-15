@@ -1,0 +1,166 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  data:
+    redis:
+      # The same Redis the llm-gateway uses for prompt cache. Override
+      # for managed deployments. Used by Spring Cloud Gateway's
+      # RequestRateLimiter — see RateLimitConfig.
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:atlas_dev_pwd}
+  cloud:
+    gateway:
+      # Stage A archaeology takes ~50 s end-to-end on the WS-I SCM
+      # sample (one synchronous Anthropic call per extracted operation).
+      # Spring Cloud Gateway's default Netty response-timeout is short
+      # enough that the proxied POST aborts before prj-service hands
+      # the result back, and the SPA mutation never resolves. Lift it
+      # to 5 minutes — well past the longest synchronous stage call —
+      # so the gateway is never the bottleneck. Production deployments
+      # can keep it lower once the Phase 2I async wrapper is live.
+      httpclient:
+        response-timeout: 300s
+        connect-timeout: 10000
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://localhost:4173"      # vite preview, used by E2E
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            exposedHeaders:
+              # The browser / Playwright / curl can read these on the
+              # response. X-Atlas-Request-Id is the per-request
+              # correlation id stamped by RequestIdFilter; surface it
+              # so log queries can be filtered by the same id the SPA
+              # sees.
+              - "X-Atlas-Request-Id"
+              - "X-Atlas-Trace-Id"
+            allowCredentials: true
+  profiles:
+    # The default profile activates auth-sim — every developer working
+    # locally gets the demo IdP unless they explicitly set
+    # SPRING_PROFILES_ACTIVE=auth-real (which then requires real OIDC env
+    # vars to be present).
+    default: auth-sim
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://jaeger:4318/v1/traces}
+      transport: http
+
+atlas:
+  ratelimit:
+    # Token-bucket parameters consumed by RateLimitConfig. Tune per
+    # environment. Defaults: 10 req/s sustained, 20 req burst — a real
+    # SPA user peaks at 2-3 req/s, so this is comfortable headroom.
+    replenish: ${RATE_LIMIT_REPLENISH:10}
+    burst: ${RATE_LIMIT_BURST:20}
+    requested-tokens: 1
+
+  observability:
+    # The SPA appends `<traceUiUrl>/trace/<id>` to deep-link audit
+    # entries to the tracing backend. In docker-compose this points at
+    # the Jaeger UI. Override via env var for production (Tempo, Datadog
+    # APM, etc.). Empty value disables the "View trace" link.
+    trace-ui-url: ${ATLAS_TRACE_UI_URL:http://localhost:26686}
+
+---
+# ============================================================
+# Profile: auth-sim    (local fake-idp, demos, CI)
+# ============================================================
+spring:
+  config:
+    activate:
+      on-profile: auth-sim
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # The `iss` claim in the JWT — what the browser sees fake-idp as.
+          # Always http://localhost:8093 in compose; if you've remapped the
+          # port, override via FAKE_IDP_ISSUER.
+          issuer-uri: ${FAKE_IDP_ISSUER:http://localhost:8093}
+          # Where the GATEWAY (in-container) fetches the JWKS from. Setting
+          # both issuer-uri and jwk-set-uri makes Spring skip discovery —
+          # discovery would try issuer-uri/.well-known/openid-configuration
+          # which a container can't reach if issuer-uri is localhost.
+          jwk-set-uri: ${FAKE_IDP_JWKS:http://fake-idp:8093/.well-known/jwks.json}
+          # Audience the JWT must carry. Spring 3.2+ validates this
+          # natively when the property is set. fake-idp mints atlas-spa.
+          audiences:
+            - atlas-spa
+
+atlas:
+  auth:
+    mode: sim
+    # Where the SPA should redirect users to log in. The browser hits this
+    # URL directly so it must be reachable from the browser.
+    login-url: ${FAKE_IDP_ISSUER:http://localhost:8093}/authorize
+    issuer:    ${FAKE_IDP_ISSUER:http://localhost:8093}
+    # The audience the JWT must carry. fake-idp mints atlas-spa.
+    audience:  atlas-spa
+    # JSON-pointer-style path to the roles array. fake-idp emits roles
+    # at the top level.
+    roles-claim: roles
+    # fake-idp doesn't implement an end_session_endpoint — for demos,
+    # logout just clears the local token and bounces back to /login.
+    end-session-url: ""
+
+---
+# ============================================================
+# Profile: auth-real   (production — customer's OIDC provider)
+# ============================================================
+spring:
+  config:
+    activate:
+      on-profile: auth-real
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # When auth-real is active, OIDC_ISSUER_URI must be set. The
+          # gateway will discover JWKS automatically via the issuer's
+          # /.well-known/openid-configuration document.
+          issuer-uri: ${OIDC_ISSUER_URI}
+          # The audience the JWT must carry. Customer IdP must include
+          # this in the JWT `aud` array. See docs/auth-production.md
+          # for per-IdP setup guidance (Keycloak audience mapper, Okta
+          # API audience, Entra App ID URI).
+          audiences:
+            - ${OIDC_AUDIENCE:atlas-spa}
+
+atlas:
+  auth:
+    mode: real
+    login-url:        ${OIDC_LOGIN_URL:${OIDC_ISSUER_URI}/protocol/openid-connect/auth}
+    issuer:           ${OIDC_ISSUER_URI}
+    # The audience claim Atlas requires in incoming JWTs. The customer
+    # IdP must include this in the `aud` array (Keycloak audience mapper,
+    # Okta API audience, Entra App ID URI).
+    audience:         ${OIDC_AUDIENCE:atlas-spa}
+    # Path to the roles array inside the JWT. Common values:
+    #   roles                  — top-level (Entra ID with App Roles, Atlas default)
+    #   realm_access.roles     — Keycloak realm roles
+    #   resource_access.<client>.roles — Keycloak client roles
+    #   groups                 — Okta group claim
+    # See docs/auth-production.md for per-IdP guidance.
+    roles-claim:      ${OIDC_ROLES_CLAIM:roles}
+    # The OIDC end_session_endpoint. The SPA hits this on Sign-out so the
+    # session is terminated at the IdP, not just locally. Leave blank to
+    # disable RP-initiated logout (e.g. if the customer IdP doesn't
+    # advertise one).
+    end-session-url:  ${OIDC_END_SESSION_URL:}

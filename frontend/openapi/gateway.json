@@ -1,0 +1,104 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Atlas Migrate · api-gateway",
+    "version": "0.1.0",
+    "description": "HTTP contract for the gateway's locally-served endpoints (everything not routed to a downstream service). Hand-curated mirror of the controller annotations; refresh by booting the gateway and `curl /v3/api-docs > frontend/openapi/gateway.json` (see docs/api-contracts.md).",
+    "contact": {
+      "name": "Atlas Migrate engineering",
+      "email": "dev@envestnet.local"
+    },
+    "license": {
+      "name": "Proprietary — Envestnet Atlas Migrate"
+    }
+  },
+  "servers": [
+    { "url": "http://localhost:8080", "description": "Gateway (browser-facing)" }
+  ],
+  "tags": [
+    { "name": "auth",     "description": "Identity + auth-config probes used by the SPA" }
+  ],
+  "paths": {
+    "/api/v1/auth/config": {
+      "get": {
+        "tags": ["auth"],
+        "operationId": "authConfig",
+        "summary": "Pre-login config probe",
+        "description": "Returns the metadata the SPA needs before it has a token: where to redirect for login, the audience the JWT must carry, where to do RP-initiated logout, where the tracing UI lives. Public — no bearer required.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Auth config snapshot.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthConfig" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "tags": ["auth"],
+        "operationId": "me",
+        "summary": "Current identity",
+        "description": "Identity derived from the validated JWT. Requires a bearer token; returns 401 otherwise. The `demo` flag mirrors the JWT's `atlas_demo` claim and drives the \"DEMO IDENTITY\" banner in the chrome.",
+        "security": [{ "bearer-jwt": [] }],
+        "responses": {
+          "200": {
+            "description": "Identity payload.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Identity" }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid bearer token." }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer-jwt": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Gateway-validated OIDC bearer token. See docs/auth.md."
+      }
+    },
+    "schemas": {
+      "AuthConfig": {
+        "type": "object",
+        "required": ["mode", "loginUrl", "issuer", "clientId"],
+        "properties": {
+          "mode":     { "type": "string", "enum": ["sim", "real"], "description": "`sim` activates the local fake-IdP; `real` uses the customer's OIDC." },
+          "loginUrl": { "type": "string", "format": "uri", "description": "Browser-facing /authorize URL." },
+          "issuer":   { "type": "string", "format": "uri", "description": "OIDC issuer (matches the JWT `iss` claim)." },
+          "clientId": { "type": "string", "description": "OAuth2 client id Atlas registers as." },
+          "audience": { "type": "string", "description": "Audience the JWT must carry; informational for SDK consumers — gateway enforces server-side." },
+          "endSessionUrl": {
+            "type": "string",
+            "description": "OIDC end_session_endpoint. Empty disables RP-initiated logout (SPA stays on local-only logout)."
+          },
+          "traceUiUrl": {
+            "type": "string",
+            "description": "Base URL of the distributed-tracing UI (Jaeger / Tempo). Empty hides the \"View trace\" link in the audit browser."
+          }
+        }
+      },
+      "Identity": {
+        "type": "object",
+        "required": ["email", "name", "role", "roles", "demo"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "name":  { "type": "string" },
+          "role":  { "type": "string", "description": "Primary role, lowercased. Convenience field; `roles` is authoritative." },
+          "roles": { "type": "array", "items": { "type": "string" }, "description": "All role claims from the JWT." },
+          "demo":  { "type": "boolean", "description": "True when the JWT carries `atlas_demo: true` (fake-IdP). Drives the demo banner in the SPA chrome." }
+        }
+      }
+    }
+  }
+}

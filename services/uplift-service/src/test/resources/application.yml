@@ -1,0 +1,31 @@
+# Test profile: production application.yml is loaded first, then this overrides.
+# Datasource is dynamically wired via BaseServiceTest.@DynamicPropertySource.
+
+spring:
+  application:
+    name: uplift-service-test
+  data:
+    jdbc:
+      dialect: postgresql
+  flyway:
+    enabled: true
+    schemas: uplift
+    default-schema: uplift
+    create-schemas: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+    # Each test run starts on a clean schema — clean disabled is fine because
+    # we wipe rows between tests in setup methods. If parallel test runs become
+    # a concern we'll switch to per-class containers + clean=true.
+
+# Outbound prov-service calls are no-ops in tests; we exercise the emitter
+# logic via direct calls in dedicated tests, not as a side-effect.
+PROV_ENABLED: false
+PROV_SERVICE_URL: http://localhost:1
+LLM_GATEWAY_URL:  http://localhost:1
+
+logging:
+  level:
+    org.flywaydb: INFO
+    com.envestnet.atlas: INFO

@@ -1,0 +1,118 @@
+server:
+  port: 8081
+  # Conservative request-size limits. Atlas's largest legitimate POST
+  # is a custom-recipe body (~10 KB), so 1 MB is comfortable headroom
+  # while still capping abuse. Override per-environment via env vars
+  # if a legitimate workflow needs more.
+  tomcat:
+    max-http-form-post-size: ${MAX_REQUEST_SIZE:1MB}
+    max-swallow-size: ${MAX_REQUEST_SIZE:1MB}
+  max-http-request-header-size: ${MAX_HEADER_SIZE:32KB}
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: ${MAX_REQUEST_SIZE:1MB}
+      max-request-size: ${MAX_REQUEST_SIZE:1MB}
+  application:
+    name: prj-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/atlas}
+    username: ${SPRING_DATASOURCE_USERNAME:atlas}
+    password: ${SPRING_DATASOURCE_PASSWORD:atlas_dev_pwd}
+  data:
+    jdbc:
+      dialect: postgresql
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  flyway:
+    enabled: true
+    schemas: prj
+    default-schema: prj
+    create-schemas: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,mappings,prometheus
+  # OpenTelemetry tracing — see docs/observability.md. Override
+  # OTEL_EXPORTER_OTLP_ENDPOINT for production.
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://jaeger:4318/v1/traces}
+      transport: http
+
+# ----------------------------------------------------------------------------
+# Reliability — Resilience4j policies for outbound fan-out.
+# ----------------------------------------------------------------------------
+# prj-service fans out to arch / cap / recon / gen / diff / reports / prov /
+# uplift via RestTemplate. A slow downstream must not block prj-service
+# threads indefinitely or cascade into the user-facing read path. We use a
+# single shared "downstream" instance with conservative defaults; per-service
+# tuning can be added as overrides if real-world traffic surfaces hot spots.
+resilience4j:
+  circuitbreaker:
+    instances:
+      downstream:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50               # % of last 20 calls failing → trip
+        wait-duration-in-open-state: 10s         # half-open after 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - org.springframework.web.client.RestClientException
+          - java.io.IOException
+  retry:
+    instances:
+      downstream:
+        max-attempts: 3
+        wait-duration: 200ms
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - java.net.SocketTimeoutException
+          - java.net.ConnectException
+        # Don't retry on 4xx — those are deterministic client errors.
+
+  # No TimeLimiter — the existing RestTemplate read timeout (3 minutes,
+  # set in PrjApplication.restTemplate) is the source of truth. A
+  # TimeLimiter shorter than that would break archaeology / generation
+  # runs which can legitimately take 60+ seconds.
+
+# ----------------------------------------------------------------------------
+# Temporal — durable async orchestration. See docs/orchestration.md.
+# ----------------------------------------------------------------------------
+# The docker-compose stack ships a Temporal all-in-one at temporal:7233.
+# In production, point this at your Temporal Cloud namespace / managed
+# instance. The application starts a worker registered on the
+# `atlas-prj` task queue; workflow definitions live under
+# `…/orchestration/`.
+#
+# Note: declared as a separate document below (--- delimiter) rather
+# than redeclaring `spring:` at the top level — YAML rejects duplicate
+# keys in the same document and Spring Boot's profile-aware loader
+# merges multi-document files.
+---
+spring:
+  temporal:
+    connection:
+      target: ${TEMPORAL_TARGET:temporal:7233}
+      namespace: ${TEMPORAL_NAMESPACE:default}
+    workers:
+      - task-queue: atlas-prj
+        # The starter scans @Component beans annotated with
+        # @WorkflowImpl / @ActivityImpl and registers them on this
+        # worker automatically.
+        capacity:
+          max-concurrent-workflow-task-executors: 10
+          max-concurrent-activity-executors: 20

@@ -1,0 +1,254 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- base ---------- */
+
+@layer base {
+  :root {
+    /* Shell */
+    --header-h:    56px;
+    --status-h:    28px;
+    --nav-w:       232px;
+    --nav-w-sm:    64px;          /* collapsed icon-only nav at narrow viewports */
+    --content-max: 1400px;
+
+    /* Standardised side-rail widths. Three sizes only — every rail in the
+       app picks one. Pre-2A there were 8 different magic widths; this
+       collapses them to a coherent set. */
+    --rail-narrow:   260px;        /* compact filter / nav lists */
+    --rail-default:  320px;        /* queues, lists with metadata */
+    --rail-agent:    360px;        /* right rail for agent panel */
+
+    /* Stage chrome */
+    --chrome-h:      52px;
+    --pipeline-h:    56px;
+
+    /* Vertical rhythm */
+    --screen-pad-x:  clamp(20px, 3vw, 40px);
+    --card-pad:      clamp(16px, 2vw, 24px);
+
+    /* Legacy alias kept for one release — remove after refactor settles. */
+    --pane-r:        var(--rail-agent);
+  }
+
+  html, body, #root { height: 100%; }
+  body {
+    @apply font-sans text-fg-1 bg-canvas antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+    text-rendering: optimizeLegibility;
+  }
+
+  * { border-color: theme('colors.line'); }
+
+  ::selection { @apply bg-brand-100 text-brand-700; }
+
+  /* Scrollbars: thin, refined */
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb {
+    background: theme('colors.line2');
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover { background: theme('colors.fg-3'); background-clip: padding-box; border: 2px solid transparent; }
+  *::-webkit-scrollbar-track { background: transparent; }
+
+  code, pre, .mono { @apply font-mono; }
+  h1, h2, h3, h4 { @apply text-fg-1; }
+}
+
+/* ---------- components ---------- */
+
+@layer components {
+  /* Surfaces */
+  .surface  { @apply bg-surface border border-line rounded-lg; }
+  .surface-soft { @apply bg-canvas border border-line rounded-lg; }
+
+  .card {
+    @apply bg-surface border border-line rounded-lg shadow-xs transition-all duration-200 ease-soft;
+  }
+  .card-hover { @apply hover:shadow-md hover:-translate-y-px; }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 px-3 h-8
+           rounded-md text-sm font-medium select-none whitespace-nowrap
+           transition-all duration-150 ease-soft
+           disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-primary {
+    @apply btn bg-ink text-white shadow-sm
+           hover:bg-[#1A2540] active:bg-[#0B1220];
+  }
+  .btn-brand {
+    @apply btn bg-brand text-white shadow-sm
+           hover:bg-brand-700 active:bg-brand-700;
+  }
+  .btn-secondary {
+    @apply btn bg-surface text-fg-1 border border-line
+           hover:bg-subtle active:bg-subtle;
+  }
+  .btn-ghost {
+    @apply btn text-fg-2 hover:bg-subtle hover:text-fg-1;
+  }
+  .btn-danger-ghost {
+    @apply btn text-err hover:bg-err-50;
+  }
+  .btn-sm { @apply h-7 px-2.5 text-xs; }
+  .btn-lg { @apply h-10 px-4 text-base; }
+  .btn-icon { @apply px-0 w-8; }
+
+  /* Inputs */
+  .input {
+    @apply w-full h-9 px-3 bg-surface border border-line rounded-md
+           text-sm text-fg-1 placeholder:text-fg-4
+           transition-shadow duration-150
+           focus:outline-none focus:border-brand
+           focus:ring-4 focus:ring-brand/10;
+  }
+  .textarea { @apply input h-auto min-h-[80px] py-2 leading-relaxed; }
+
+  /* Badges / pills */
+  .badge {
+    @apply inline-flex items-center gap-1 px-1.5 h-5 rounded
+           text-2xs font-medium tracking-tight uppercase;
+  }
+  .badge-mono { @apply font-mono normal-case tracking-normal; }
+  .badge-neutral { @apply badge bg-subtle text-fg-2; }
+  .badge-ok      { @apply badge bg-ok-50 text-ok; }
+  .badge-warn    { @apply badge bg-warn-50 text-warn; }
+  .badge-err     { @apply badge bg-err-50 text-err; }
+  .badge-brand   { @apply badge bg-brand-50 text-brand-700; }
+  .badge-agent   { @apply badge bg-agent-50 text-agent; }
+
+  /* Status dot */
+  .dot { @apply inline-block w-1.5 h-1.5 rounded-full; }
+  .dot-pulse { @apply animate-pulseDot; }
+
+  /* Section header */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.08em] text-fg-3;
+  }
+
+  /* Top bar / left nav primitives */
+  .topbar {
+    @apply h-[var(--header-h)] bg-header-grad text-white
+           border-b border-black/30
+           flex items-center px-5 gap-4 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset];
+  }
+  .nav-item {
+    @apply flex items-center gap-2.5 h-9 px-3 mx-2 rounded-md
+           text-sm text-fg-2 hover:text-fg-1 hover:bg-subtle
+           transition-colors duration-150;
+  }
+  .nav-item-active {
+    @apply text-fg-1 bg-subtle font-medium relative;
+  }
+  .nav-item-active::before {
+    content: '';
+    @apply absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-brand;
+  }
+
+  /* Tabs */
+  .tab {
+    @apply relative px-3 h-10 inline-flex items-center gap-1.5
+           text-sm text-fg-3 font-medium hover:text-fg-1
+           transition-colors duration-150;
+  }
+  .tab-active {
+    @apply text-fg-1;
+  }
+  .tab-active::after {
+    content: '';
+    @apply absolute left-2 right-2 -bottom-px h-0.5 rounded-full bg-brand;
+  }
+
+  /* Skeleton shimmer */
+  .skel {
+    background: linear-gradient(90deg,
+      theme('colors.subtle') 0%,
+      theme('colors.line')   50%,
+      theme('colors.subtle') 100%);
+    background-size: 800px 100%;
+    @apply animate-shimmer rounded;
+  }
+
+  /* Inline kbd */
+  .kbd {
+    @apply inline-flex items-center justify-center min-w-[18px] h-[18px] px-1
+           rounded bg-white/10 text-white/80 text-[10px] font-medium font-mono
+           border border-white/15;
+  }
+
+  /* Definition list pair */
+  .def-row { @apply flex gap-4 py-1.5; }
+  .def-key { @apply w-32 shrink-0 text-xs text-fg-3 uppercase tracking-wider pt-0.5; }
+  .def-val { @apply text-sm text-fg-1 min-w-0 break-words; }
+
+  /* Code chip */
+  .code-chip {
+    @apply inline-flex items-center px-1.5 py-0.5 rounded
+           bg-subtle text-fg-1 font-mono text-xs;
+  }
+
+  /* Agent surface */
+  .agent-surface {
+    @apply bg-agent-grad border-l border-line;
+  }
+
+  /* ---------- Stage chrome primitives ---------- */
+
+  /* Single source of truth for the stage header strip used by every stage
+     screen. Wraps to two rows below 1024px so count chips stop colliding
+     with action buttons (audit C4). */
+  .stage-chrome {
+    @apply px-5 py-3 border-b border-line
+           flex flex-wrap items-center gap-x-4 gap-y-2;
+  }
+  .stage-chrome-title { @apply flex items-center gap-3 min-w-0; }
+  .stage-chrome-meta  { @apply flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-3 min-w-0; }
+  .stage-chrome-actions {
+    @apply ml-auto flex items-center gap-1.5 flex-wrap justify-end;
+  }
+
+  /* Pane shells — encapsulate the `card overflow-hidden + grid-cols-[…]`
+     pattern used by every multi-pane stage. The grid col widths come from
+     CSS variables so screens stop reinventing rail sizes. */
+  .pane-shell { @apply card overflow-hidden; }
+  .pane-grid-2-narrow  { @apply grid min-h-[600px]; grid-template-columns: var(--rail-narrow) minmax(0, 1fr); }
+  .pane-grid-2         { @apply grid min-h-[600px]; grid-template-columns: var(--rail-default) minmax(0, 1fr); }
+  .pane-grid-3         { @apply grid min-h-[600px];
+                          grid-template-columns: var(--rail-default) minmax(0, 1fr) var(--rail-agent); }
+  .pane-grid-3-narrow  { @apply grid min-h-[600px];
+                          grid-template-columns: var(--rail-narrow) minmax(0, 1fr) var(--rail-agent); }
+
+  .pane-rail-l { @apply border-r border-line bg-canvas/60 flex flex-col min-w-0; }
+  .pane-rail-r { @apply border-l border-line bg-canvas/60 flex flex-col min-w-0; }
+  .pane-main   { @apply flex flex-col min-w-0 overflow-hidden; }
+
+  /* Banner / inline notice — for thin info bars (replaces the ad-hoc
+     "card mt-3 px-4 py-2.5 bg-brand-50 border-brand/30" used today). */
+  .notice         { @apply rounded-md px-3 py-2 flex items-center gap-2 text-xs border; }
+  .notice-info    { @apply notice bg-brand-50 border-brand/30 text-fg-2; }
+  .notice-warn    { @apply notice bg-warn-50 border-warn/30 text-warn; }
+  .notice-err     { @apply notice bg-err-50 border-err/30 text-err; }
+  .notice-ok      { @apply notice bg-ok-50 border-ok/30 text-ok; }
+
+  /* Visually hidden but available to assistive tech. */
+  .sr-only-focusable { @apply sr-only; }
+  .sr-only-focusable:focus,
+  .sr-only-focusable:focus-within {
+    @apply not-sr-only fixed top-2 left-2 z-50 h-9 px-3 inline-flex items-center
+           rounded-md bg-ink text-white text-sm shadow-md;
+    clip: auto;
+  }
+}
+
+/* ---------- utilities ---------- */
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .grid-rail-3  { grid-template-columns: 280px minmax(0, 1fr) var(--pane-r); }
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+}

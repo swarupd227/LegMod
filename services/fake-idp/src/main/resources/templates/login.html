@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas Migrate · Sign in (demo)</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #ffffff;
+      --line: #e2e6ee;
+      --fg: #0f172a;
+      --fg-muted: #475569;
+      --brand: #1f4fd9;
+      --brand-50: #eff4ff;
+      --warn: #b45309;
+      --warn-50: #fff7ed;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--fg);
+      background: linear-gradient(140deg, #0b1020 0%, #1f4fd9 100%);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .panel {
+      width: 100%;
+      max-width: 520px;
+      background: var(--panel);
+      border-radius: 12px;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4);
+      overflow: hidden;
+    }
+    header {
+      padding: 28px 32px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--fg-muted);
+      font-weight: 600;
+    }
+    h1 {
+      font-size: 22px;
+      margin: 6px 0 0;
+      letter-spacing: -0.02em;
+    }
+    .demo-banner {
+      margin: 14px 32px 0;
+      padding: 10px 14px;
+      background: var(--warn-50);
+      color: var(--warn);
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      font-size: 12px;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .demo-banner svg { flex-shrink: 0; margin-top: 2px; }
+    main { padding: 20px 32px 28px; }
+    .personas { display: grid; gap: 10px; }
+    .persona {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 14px 16px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      font-family: inherit;
+    }
+    .persona:hover {
+      border-color: var(--brand);
+      background: var(--brand-50);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px -2px rgba(31,79,217,0.15);
+    }
+    .persona-name {
+      font-weight: 600;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+    .persona-title {
+      color: var(--fg-muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    .persona-roles {
+      margin-top: 8px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .role-chip {
+      font: 11px/1.4 ui-monospace, "JetBrains Mono", "SF Mono", Consolas, monospace;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--brand-50);
+      color: var(--brand);
+    }
+    footer {
+      padding: 14px 32px;
+      background: #f8fafc;
+      border-top: 1px solid var(--line);
+      font-size: 11px;
+      color: var(--fg-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+    code {
+      font-family: ui-monospace, "JetBrains Mono", "SF Mono", Consolas, monospace;
+      background: #eef2ff;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <header>
+      <div class="eyebrow">Atlas Migrate</div>
+      <h1>Choose a demo identity</h1>
+    </header>
+
+    <div class="demo-banner" role="alert">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <span>
+        This is a <strong>demo identity provider</strong>. JWTs issued here are
+        signed by an in-memory keypair generated at startup and have no
+        relationship to real Envestnet credentials. Production deployments use
+        the <code>auth-real</code> profile against your customer's OIDC.
+      </span>
+    </div>
+
+    <main>
+      <div class="personas">
+        <form th:each="p : ${personas}" method="post" action="/login">
+          <input type="hidden" name="personaId" th:value="${p.id}" />
+          <input type="hidden" name="resume" th:value="${resume}" />
+          <button type="submit" class="persona">
+            <div class="persona-name" th:text="${p.name}">Alice</div>
+            <div class="persona-title" th:text="${p.title}">Migration Engineer</div>
+            <div class="persona-roles">
+              <span class="role-chip" th:each="r : ${p.roles}" th:text="${r}">ENGINEER</span>
+            </div>
+          </button>
+        </form>
+      </div>
+    </main>
+
+    <footer>
+      <span>fake-idp · v0.1.0</span>
+      <span>OIDC · authorization-code + PKCE</span>
+    </footer>
+  </div>
+</body>
+</html>

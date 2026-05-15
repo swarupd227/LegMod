@@ -1,0 +1,26 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: llm-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: 6379
+      password: ${REDIS_PASSWORD:atlas_dev_pwd}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  # OpenTelemetry tracing — see docs/observability.md. Override
+  # OTEL_EXPORTER_OTLP_ENDPOINT for production.
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://jaeger:4318/v1/traces}
+      transport: http

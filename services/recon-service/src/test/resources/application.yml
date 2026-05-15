@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: recon-service-test
+  data:
+    jdbc:
+      dialect: postgresql
+  flyway:
+    enabled: true
+    schemas: recon
+    default-schema: recon
+    create-schemas: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
+PROV_ENABLED: false
+PROV_SERVICE_URL: http://localhost:1
+LLM_GATEWAY_URL:  http://localhost:1

@@ -1,0 +1,52 @@
+{
+  "name": "atlas-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:ui": "playwright test --ui",
+    "e2e:report": "playwright show-report",
+    "codegen:llm":     "openapi-typescript openapi/llm-gateway.json -o src/api/generated/llm-gateway.ts",
+    "codegen:gateway": "openapi-typescript openapi/gateway.json     -o src/api/generated/gateway.ts",
+    "codegen":         "npm run codegen:gateway && npm run codegen:llm",
+    "codegen:check":   "npm run codegen && git diff --exit-code src/api/generated/"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.59.0",
+    "diff": "^7.0.0",
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "react-router-dom": "^6.27.0",
+    "remark-gfm": "^4.0.0",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.1",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/diff": "^6.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "@playwright/test": "^1.48.2",
+    "@vitest/coverage-v8": "^2.1.5",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^25.0.1",
+    "openapi-typescript": "^7.4.4",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.5"
+  }
+}

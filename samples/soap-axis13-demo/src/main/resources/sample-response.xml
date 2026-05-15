@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:br="http://broadridge.com/services/mf"
+                  xmlns:tt="http://broadridge.com/services/mf/types">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <br:submitAllocationResponse>
+      <br:submitAllocationReturn>
+        <tt:allocationId>ALLOC-2025-019283</tt:allocationId>
+        <tt:status>ACCEPTED</tt:status>
+        <tt:executedAmount>
+          <tt:value>10000.00</tt:value>
+          <tt:currency>USD</tt:currency>
+        </tt:executedAmount>
+        <tt:settlementDate>01/17/2025</tt:settlementDate>
+        <tt:confirmationNumber>CONF-91A2-7B3D</tt:confirmationNumber>
+      </br:submitAllocationReturn>
+    </br:submitAllocationResponse>
+  </soapenv:Body>
+</soapenv:Envelope>

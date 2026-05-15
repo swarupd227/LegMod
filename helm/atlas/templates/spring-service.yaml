@@ -1,0 +1,174 @@
+{{/*
+  Atlas Migrate · per-service Deployment + Service.
+
+  This template iterates over `.Values.services` and emits a
+  Deployment + ClusterIP Service per entry. Skipping an entry is done
+  by setting `enabled: false` in values (only fake-idp has this today;
+  the rest of the services are required).
+
+  Each Deployment:
+    - Pulls `<global.registry>/<svc.image>:<global.imageTag>`
+    - Drops to non-root via `global.podSecurityContext`
+    - Exposes the service's port and points the actuator probe at it
+    - Mounts SPRING_PROFILES_ACTIVE from the per-service override (or
+      the global default), plus all per-service env values rendered
+      through tpl so they can interpolate `{{ .Values… }}`
+    - Wires postgres / redis / minio / OIDC / LLM secrets when the
+      corresponding `global.secrets.*` name is set; otherwise the env
+      vars stay unbound and the service falls back to its defaults
+
+  Adding a new service is values-only: append an entry under
+  `services` and rerun `helm template`. No template change needed.
+*/}}
+{{- range $name, $svc := .Values.services }}
+{{- if hasKey $svc "enabled" | ternary $svc.enabled true }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "atlas.serviceLabels" (dict "root" $ "name" $name) | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas | default 1 }}
+  selector:
+    matchLabels:
+      atlas.envestnet.com/service: {{ $name }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+  template:
+    metadata:
+      labels: {{- include "atlas.serviceLabels" (dict "root" $ "name" $name) | nindent 8 }}
+      annotations:
+        # Triggers a rolling restart whenever the rendered config
+        # changes. Standard Helm idiom.
+        checksum/values: {{ $.Values | toYaml | sha256sum }}
+    spec:
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $.Values.global.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "atlas.image" (dict "root" $ "svc" $svc) }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml $.Values.global.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+              protocol: TCP
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: {{ default $.Values.global.springProfile $svc.springProfile | quote }}
+            - name: SERVER_PORT
+              value: {{ $svc.port | quote }}
+            {{- if and (hasKey $svc.env "SPRING_DATASOURCE_URL" | not) (eq $name "prj-service") }}
+            # JDBC URL is composed from backing-store values + secret.
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://{{ $.Values.global.backingStores.postgresHost }}:{{ $.Values.global.backingStores.postgresPort }}/{{ $.Values.global.backingStores.postgresDb }}"
+            {{- end }}
+            {{- if $.Values.global.secrets.postgresSecretName }}
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.secrets.postgresSecretName }}
+                  key: username
+                  optional: true
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.secrets.postgresSecretName }}
+                  key: password
+                  optional: true
+            {{- end }}
+            {{- if $.Values.global.secrets.redisSecretName }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.secrets.redisSecretName }}
+                  key: password
+                  optional: true
+            {{- end }}
+            {{- if $.Values.global.secrets.minioSecretName }}
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.secrets.minioSecretName }}
+                  key: rootUser
+                  optional: true
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.secrets.minioSecretName }}
+                  key: rootPassword
+                  optional: true
+            {{- end }}
+            {{- if and $.Values.global.secrets.oidcSecretName (eq $name "api-gateway") }}
+            - name: OIDC_ISSUER_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.secrets.oidcSecretName }}
+                  key: issuerUri
+                  optional: true
+            - name: OIDC_AUDIENCE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.secrets.oidcSecretName }}
+                  key: audience
+                  optional: true
+            - name: OIDC_END_SESSION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.secrets.oidcSecretName }}
+                  key: endSessionUrl
+                  optional: true
+            {{- end }}
+            {{- if and $.Values.global.secrets.llmSecretName (eq $name "llm-gateway") }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.secrets.llmSecretName }}
+                  key: anthropicApiKey
+                  optional: true
+            {{- end }}
+            {{- range $k, $v := $svc.env }}
+            - name: {{ $k }}
+              value: {{ tpl ($v | toString) $ | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml (default $.Values.global.resources $svc.resources) | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: {{ default "/actuator/health/readiness" $svc.healthCheckPath }}
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: {{ default "/actuator/health/liveness" $svc.healthCheckPath }}
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "atlas.serviceLabels" (dict "root" $ "name" $name) | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    atlas.envestnet.com/service: {{ $name }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+{{- end }}
+{{- end }}

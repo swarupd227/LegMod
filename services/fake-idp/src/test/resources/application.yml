@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: fake-idp-test
+
+# Mirror the production-side defaults; tests just need them present.
+fake-idp:
+  issuer: http://localhost:8093
+  access-token-ttl-seconds: 3600
+  personas:
+    - id: alice@envestnet.local
+      name: Alice
+      title: Migration Engineer
+      roles: [ENGINEER]
+    - id: bob@envestnet.local
+      name: Bob
+      title: Tech Lead
+      roles: [ENGINEER, TECH_LEAD]
+    - id: carol@envestnet.local
+      name: Carol
+      title: Engagement Admin
+      roles: [ENGINEER, TECH_LEAD, ADMIN]
+
+logging:
+  level:
+    # Quiet by default; flip these to DEBUG locally when investigating a
+    # 4xx/5xx in the OIDC flow.
+    org.springframework.web: WARN
+    com.envestnet: INFO

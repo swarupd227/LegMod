@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Vendor-incomplete WSDL fragment retained from the original Axis project.
+  The Atlas Migrate Schema Reconciliation workbench will fold this together
+  with the code-derived schema and the empirical schema inferred from the
+  captured corpus to produce the Authoritative WSDL.
+-->
+<wsdl:definitions
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    xmlns:tns="http://broadridge.com/services/mf"
+    xmlns:tt="http://broadridge.com/services/mf/types"
+    targetNamespace="http://broadridge.com/services/mf">
+
+  <wsdl:types>
+    <xsd:schema targetNamespace="http://broadridge.com/services/mf/types">
+      <xsd:complexType name="AllocationRequest">
+        <xsd:sequence>
+          <xsd:element name="accountId"     type="xsd:string"/>
+          <xsd:element name="fundSymbol"    type="xsd:string"/>
+          <xsd:element name="amount"        type="tt:Money"/>
+          <!-- intentionally typed as xsd:date here; corpus shows MM/dd/yyyy strings -->
+          <xsd:element name="tradeDate"     type="xsd:date"/>
+          <xsd:element name="accountType"   type="xsd:string"/>
+          <xsd:element name="correlationId" type="xsd:string" minOccurs="0"/>
+        </xsd:sequence>
+      </xsd:complexType>
+      <xsd:complexType name="Money">
+        <xsd:sequence>
+          <xsd:element name="value"    type="xsd:decimal"/>
+          <xsd:element name="currency" type="xsd:string"/>
+        </xsd:sequence>
+      </xsd:complexType>
+    </xsd:schema>
+  </wsdl:types>
+
+  <wsdl:message name="submitAllocationRequest">
+    <wsdl:part name="request" type="tt:AllocationRequest"/>
+  </wsdl:message>
+
+  <wsdl:portType name="AllocationServicePortType">
+    <wsdl:operation name="submitAllocation">
+      <wsdl:input  message="tns:submitAllocationRequest"/>
+    </wsdl:operation>
+  </wsdl:portType>
+</wsdl:definitions>

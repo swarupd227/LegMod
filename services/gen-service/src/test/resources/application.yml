@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: gen-service-test
+  data:
+    jdbc:
+      dialect: postgresql
+  flyway:
+    enabled: true
+    schemas: gen
+    default-schema: gen
+    create-schemas: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
+PROV_ENABLED: false
+PROV_SERVICE_URL: http://localhost:1
+LLM_GATEWAY_URL:  http://localhost:1
+ARCH_SERVICE_URL: http://localhost:1

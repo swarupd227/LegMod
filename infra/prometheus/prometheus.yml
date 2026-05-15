@@ -1,0 +1,41 @@
+# Atlas Migrate · Prometheus scrape config (local-Docker demo).
+#
+# Scrapes /actuator/prometheus on every Atlas service that exposes it.
+# Service discovery is static — for the local demo we know exactly
+# which hosts exist. In production, replace the `static_configs` with
+# `kubernetes_sd_configs` (or whatever your environment uses).
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: atlas-local
+
+scrape_configs:
+  - job_name: atlas-services
+    metrics_path: /actuator/prometheus
+    scrape_interval: 15s
+    static_configs:
+      # Application services — internal docker-network hostnames + ports.
+      - targets:
+          - api-gateway:8080
+          - prj-service:8081
+          - llm-gateway:8082
+          - arch-service:8083
+          - graph-service:8084
+          - cap-service:8085
+          - recon-service:8086
+          - gen-service:8087
+          - diff-service:8089
+          - reports-service:8090
+          - prov-service:8091
+          - uplift-service:8092
+          - fake-idp:8093
+        labels:
+          tier: app
+
+  - job_name: prometheus-self
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          tier: infra

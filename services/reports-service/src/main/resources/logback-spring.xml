@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Atlas Migrate · structured logging.
+
+  Profile-driven layout:
+    docker / prod  → JSON to stdout (collected by Loki/Promtail/etc.)
+    other          → human-readable to stdout (dev + tests)
+
+  MDC keys populated by `RequestContextFilter` per-request and
+  propagated to outbound HTTP calls by `IdentityForwardingInterceptor`:
+    requestId   — per-request correlation id (X-Atlas-Request-Id)
+    userEmail   — gateway-asserted (X-Atlas-User-Email)
+    userRoles   — comma-separated roles (X-Atlas-User-Roles)
+    projectId   — when the request is project-scoped
+-->
+<configuration>
+    <springProperty scope="context" name="appName"
+                    source="spring.application.name" defaultValue="atlas"/>
+
+    <!-- Pretty layout for dev / tests. Includes the MDC keys inline so
+         "tail -f" output stays useful without needing jq. -->
+    <springProfile name="!docker &amp; !prod">
+        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n%mdc%n</pattern>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="STDOUT"/>
+        </root>
+        <logger name="com.envestnet" level="DEBUG"/>
+    </springProfile>
+
+    <!-- JSON layout for docker / prod. One JSON object per line; MDC
+         keys land at the top level of each event. -->
+    <springProfile name="docker | prod">
+        <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeMdcKeyName>requestId</includeMdcKeyName>
+                <includeMdcKeyName>userEmail</includeMdcKeyName>
+                <includeMdcKeyName>userRoles</includeMdcKeyName>
+                <includeMdcKeyName>projectId</includeMdcKeyName>
+                <!-- Populated by Micrometer Tracing for the duration of a span. -->
+                <includeMdcKeyName>traceId</includeMdcKeyName>
+                <includeMdcKeyName>spanId</includeMdcKeyName>
+                <customFields>{"app":"${appName}"}</customFields>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="JSON"/>
+        </root>
+    </springProfile>
+</configuration>

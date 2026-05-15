@@ -1,0 +1,52 @@
+server:
+  port: 8093
+
+spring:
+  application:
+    name: fake-idp
+  thymeleaf:
+    cache: false   # demo iteration; production will never run this service
+
+# The issuer URL **as seen by browsers and downstream services**. The gateway
+# resolves /.well-known/openid-configuration against this URL, so it must be
+# reachable both from the browser (login redirect) and from the gateway
+# container (for JWKS fetching). In docker-compose we use the host name
+# `http://localhost:8093` because the browser sees the host network, and the
+# gateway uses `http://fake-idp:8093` for inter-container traffic — the JWT
+# `iss` claim will use the configured value below.
+fake-idp:
+  issuer: http://localhost:8093
+  # Token TTL — short enough to demo refresh; long enough that demos don't
+  # expire mid-walk-through.
+  access-token-ttl-seconds: 3600
+  # Personas served by /login. The id is what shows up in the JWT `sub`
+  # claim; email goes into the `email` claim; roles into a custom `roles`
+  # claim that the gateway maps to GrantedAuthority.
+  personas:
+    - id: alice@envestnet.local
+      name: Alice
+      title: Migration Engineer
+      roles: [ENGINEER]
+    - id: bob@envestnet.local
+      name: Bob
+      title: Tech Lead
+      roles: [ENGINEER, TECH_LEAD]
+    - id: carol@envestnet.local
+      name: Carol
+      title: Engagement Admin
+      roles: [ENGINEER, TECH_LEAD, ADMIN]
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  # OpenTelemetry tracing — see docs/observability.md. Override
+  # OTEL_EXPORTER_OTLP_ENDPOINT for production.
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://jaeger:4318/v1/traces}
+      transport: http

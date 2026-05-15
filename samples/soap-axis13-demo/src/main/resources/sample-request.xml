@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:br="http://broadridge.com/services/mf"
+                  xmlns:tt="http://broadridge.com/services/mf/types">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <br:submitAllocation>
+      <br:request>
+        <tt:accountId>ACC-91823</tt:accountId>
+        <tt:fundSymbol>VFIAX</tt:fundSymbol>
+        <tt:amount>
+          <tt:value>10000.00</tt:value>
+          <tt:currency>USD</tt:currency>
+        </tt:amount>
+        <!-- empirical evidence: tradeDate is MM/dd/yyyy on the wire,
+             not ISO 8601, despite the WSDL declaring xsd:date -->
+        <tt:tradeDate>01/15/2025</tt:tradeDate>
+        <tt:accountType>RETIREMENT</tt:accountType>
+        <tt:correlationId>corr-7c39a2</tt:correlationId>
+      </br:request>
+    </br:submitAllocation>
+  </soapenv:Body>
+</soapenv:Envelope>

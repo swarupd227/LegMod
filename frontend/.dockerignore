@@ -1,0 +1,11 @@
+# Skip the host's node_modules so the Docker build does a clean
+# `npm install` inside the image. Without this, Windows-shaped symlinks
+# under node_modules/.bin/ break Docker's COPY (it can't read them as
+# regular files or as portable symlinks).
+node_modules
+dist
+test-results
+playwright-report
+*.log
+.env
+.env.local

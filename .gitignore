@@ -1,0 +1,38 @@
+.env
+*.log
+.idea/
+.vscode/
+.DS_Store
+node_modules/
+dist/
+build/
+target/
+.gradle/
+.mvn/
+*.class
+*.jar
+*.war
+.next/
+coverage/
+.pytest_cache/
+__pycache__/
+*.pyc
+.envrc
+.tmp/
+.tmp-*
+volumes/
+
+# Local-only Claude workspace state (per-project session memory,
+# scheduled tasks, etc.). Not source.
+.claude/
+
+# Customer-cloned source trees from the demo ingestion flow. Each
+# subdirectory is a git clone of a public repo and includes its own
+# .git/, which would otherwise be incorporated as a submodule. Treat
+# this whole tree as ephemeral runtime state, not source.
+uploads/
+
+# Playwright run artifacts (videos, traces, screenshots). Large
+# binaries that belong in CI artifacts, not in source.
+frontend/test-results/
+frontend/playwright-report/

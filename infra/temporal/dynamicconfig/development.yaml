@@ -1,0 +1,29 @@
+# Temporal dynamic config for local development.
+# Loosens limits suitable for a single-node dev cluster.
+
+frontend.enableClientVersionCheck:
+  - value: true
+history.persistenceMaxQPS:
+  - value: 3000
+frontend.persistenceMaxQPS:
+  - value: 3000
+frontend.historyMgrNumConns:
+  - value: 30
+frontend.throttledLogRPS:
+  - value: 20
+history.historyMgrNumConns:
+  - value: 50
+system.advancedVisibilityWritingMode:
+  - value: "off"
+history.defaultActivityRetryPolicy:
+  - value:
+      InitialIntervalInSeconds: 1
+      MaximumIntervalCoefficient: 100.0
+      BackoffCoefficient: 2.0
+      MaximumAttempts: 0
+history.defaultWorkflowRetryPolicy:
+  - value:
+      InitialIntervalInSeconds: 1
+      MaximumIntervalCoefficient: 100.0
+      BackoffCoefficient: 2.0
+      MaximumAttempts: 0

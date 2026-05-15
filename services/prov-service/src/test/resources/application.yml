@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: prov-service-test
+  data:
+    jdbc:
+      dialect: postgresql
+  flyway:
+    enabled: true
+    schemas: prov
+    default-schema: prov
+    create-schemas: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
+logging:
+  level:
+    org.flywaydb: INFO

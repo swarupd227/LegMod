@@ -1,0 +1,13 @@
+# Disable health indicators for Redis (used by the rate limiter — no
+# Redis in tests) and Temporal-style stores. Tests that need a
+# reachable redis spin up Testcontainers explicitly.
+management:
+  health:
+    redis:
+      enabled: false
+
+logging:
+  level:
+    org.springframework.web: WARN
+    com.envestnet: INFO
+    org.springframework.cloud.gateway: WARN

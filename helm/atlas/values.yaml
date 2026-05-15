@@ -1,0 +1,258 @@
+# Atlas Migrate · default values.
+#
+# Override per-environment via `helm install -f values-prod.yaml ...`
+# or `--set` flags. The shape is intentionally explicit per service so
+# customers can override an individual service's image / resources /
+# replicas without diving into the templates.
+
+global:
+  # Container registry the images live in. Override with the customer's
+  # registry. The image tag is `<registry>/<repository>/atlas-<svc>:<tag>`.
+  registry: ghcr.io/envestnet
+  imageTag: "0.1.0"
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+  # Spring profile applied to every service (some override this — see
+  # api-gateway).
+  springProfile: prod
+
+  # Where downstream services point. In a single-namespace install,
+  # Kubernetes service discovery makes these resolve naturally; the
+  # values here are the in-cluster names.
+  endpoints:
+    archService:    http://arch-service:8083
+    capService:     http://cap-service:8085
+    diffService:    http://diff-service:8089
+    fakeIdp:        http://fake-idp:8093
+    genService:     http://gen-service:8087
+    graphService:   http://graph-service:8084
+    llmGateway:     http://llm-gateway:8082
+    prjService:     http://prj-service:8081
+    provService:    http://prov-service:8091
+    reconService:   http://recon-service:8086
+    reportsService: http://reports-service:8090
+    upliftService:  http://uplift-service:8092
+
+  # Backing-store endpoints. Customers replace these with their managed
+  # equivalents (RDS, MemoryDB, etc.). The defaults assume the canonical
+  # Bitnami release names installed alongside this chart.
+  backingStores:
+    postgresHost: postgres
+    postgresPort: 5432
+    postgresDb:   atlas
+    neo4jUri:     bolt://neo4j:7687
+    minioEndpoint: http://minio:9000
+    minioBucketCorpus:    atlas-corpus
+    minioBucketArtifacts: atlas-artifacts
+    redisHost:    redis
+    redisPort:    6379
+    otelEndpoint: http://jaeger:4318/v1/traces
+
+  # Sensitive values. Customers should provision these via their
+  # platform's secret manager (Sealed Secrets, External Secrets,
+  # AWS / GCP / Azure native) and reference the resulting K8s Secret
+  # by name here. The default empty value disables the binding (the
+  # gateway falls back to auth-sim and stub LLM responses).
+  secrets:
+    postgresSecretName: atlas-postgres-credentials  # keys: username, password
+    redisSecretName:    atlas-redis-credentials     # keys: password
+    minioSecretName:    atlas-minio-credentials     # keys: rootUser, rootPassword
+    oidcSecretName:     ""                          # keys: issuerUri, audience, endSessionUrl
+    llmSecretName:      ""                          # keys: anthropicApiKey
+
+  # Default resource requests/limits. Per-service overrides below win.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # Pod-level security context. Mirrors the Dockerfile USER but
+  # Kubernetes enforces it independently.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser:  10001
+    runAsGroup: 10001
+    fsGroup:    10001
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false   # Spring writes /tmp; flip true once we mount an emptyDir
+    capabilities:
+      drop: [ALL]
+
+
+# ---------------------------------------------------------------------------
+# Per-service overrides. The structure is uniform across services so the
+# spring-service template can render a Deployment + Service + ConfigMap
+# from any one of these blocks.
+#
+# Required keys: image (suffix appended to global.registry), port,
+# replicas, env (free-form map merged with defaults).
+# Optional keys: command, resources, healthCheckPath (default
+# /actuator/health), exposeIngress (gateway + frontend only).
+# ---------------------------------------------------------------------------
+
+services:
+  api-gateway:
+    image: atlas-api-gateway
+    port: 8080
+    replicas: 2
+    springProfile: auth-sim
+    exposeIngress: true
+    env:
+      PRJ_SERVICE_URL: "{{ .Values.global.endpoints.prjService }}"
+      LLM_GATEWAY_URL: "{{ .Values.global.endpoints.llmGateway }}"
+      ARCH_SERVICE_URL: "{{ .Values.global.endpoints.archService }}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+      ATLAS_TRACE_UI_URL: ""
+
+  prj-service:
+    image: atlas-prj-service
+    port: 8081
+    replicas: 2
+    env:
+      ARCH_SERVICE_URL:    "{{ .Values.global.endpoints.archService }}"
+      CAP_SERVICE_URL:     "{{ .Values.global.endpoints.capService }}"
+      RECON_SERVICE_URL:   "{{ .Values.global.endpoints.reconService }}"
+      GEN_SERVICE_URL:     "{{ .Values.global.endpoints.genService }}"
+      DIFF_SERVICE_URL:    "{{ .Values.global.endpoints.diffService }}"
+      REPORTS_SERVICE_URL: "{{ .Values.global.endpoints.reportsService }}"
+      PROV_SERVICE_URL:    "{{ .Values.global.endpoints.provService }}"
+      UPLIFT_SERVICE_URL:  "{{ .Values.global.endpoints.upliftService }}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+
+  llm-gateway:
+    image: atlas-llm-gateway
+    port: 8082
+    replicas: 1
+    env:
+      REDIS_HOST: "{{ .Values.global.backingStores.redisHost }}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+
+  arch-service:
+    image: atlas-arch-service
+    port: 8083
+    replicas: 1
+    env:
+      LLM_GATEWAY_URL:  "{{ .Values.global.endpoints.llmGateway }}"
+      GRAPH_SERVICE_URL: "{{ .Values.global.endpoints.graphService }}"
+      PROV_SERVICE_URL: "{{ .Values.global.endpoints.provService }}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+
+  graph-service:
+    image: atlas-graph-service
+    port: 8084
+    replicas: 1
+    env:
+      NEO4J_URI: "{{ .Values.global.backingStores.neo4jUri }}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+
+  cap-service:
+    image: atlas-cap-service
+    port: 8085
+    replicas: 1
+    env:
+      MINIO_ENDPOINT: "{{ .Values.global.backingStores.minioEndpoint }}"
+      MINIO_BUCKET_CORPUS: "{{ .Values.global.backingStores.minioBucketCorpus }}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+
+  recon-service:
+    image: atlas-recon-service
+    port: 8086
+    replicas: 1
+    env:
+      MINIO_ENDPOINT: "{{ .Values.global.backingStores.minioEndpoint }}"
+      MINIO_BUCKET_CORPUS:    "{{ .Values.global.backingStores.minioBucketCorpus }}"
+      MINIO_BUCKET_ARTIFACTS: "{{ .Values.global.backingStores.minioBucketArtifacts }}"
+      LLM_GATEWAY_URL:  "{{ .Values.global.endpoints.llmGateway }}"
+      ARCH_SERVICE_URL: "{{ .Values.global.endpoints.archService }}"
+      PROV_SERVICE_URL: "{{ .Values.global.endpoints.provService }}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+
+  gen-service:
+    image: atlas-gen-service
+    port: 8087
+    replicas: 1
+    env:
+      MINIO_ENDPOINT: "{{ .Values.global.backingStores.minioEndpoint }}"
+      MINIO_BUCKET_ARTIFACTS: "{{ .Values.global.backingStores.minioBucketArtifacts }}"
+      ARCH_SERVICE_URL: "{{ .Values.global.endpoints.archService }}"
+      PROV_SERVICE_URL: "{{ .Values.global.endpoints.provService }}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+
+  diff-service:
+    image: atlas-diff-service
+    port: 8089
+    replicas: 1
+    env:
+      MINIO_ENDPOINT: "{{ .Values.global.backingStores.minioEndpoint }}"
+      MINIO_BUCKET_CORPUS: "{{ .Values.global.backingStores.minioBucketCorpus }}"
+      LLM_GATEWAY_URL: "{{ .Values.global.endpoints.llmGateway }}"
+      PROV_SERVICE_URL: "{{ .Values.global.endpoints.provService }}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+
+  reports-service:
+    image: atlas-reports-service
+    port: 8090
+    replicas: 1
+    env:
+      MINIO_ENDPOINT: "{{ .Values.global.backingStores.minioEndpoint }}"
+      MINIO_BUCKET_ARTIFACTS: "{{ .Values.global.backingStores.minioBucketArtifacts }}"
+      LLM_GATEWAY_URL:  "{{ .Values.global.endpoints.llmGateway }}"
+      PRJ_SERVICE_URL:  "{{ .Values.global.endpoints.prjService }}"
+      ARCH_SERVICE_URL: "{{ .Values.global.endpoints.archService }}"
+      CAP_SERVICE_URL:  "{{ .Values.global.endpoints.capService }}"
+      RECON_SERVICE_URL: "{{ .Values.global.endpoints.reconService }}"
+      GEN_SERVICE_URL:  "{{ .Values.global.endpoints.genService }}"
+      DIFF_SERVICE_URL: "{{ .Values.global.endpoints.diffService }}"
+      PROV_SERVICE_URL: "{{ .Values.global.endpoints.provService }}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+
+  prov-service:
+    image: atlas-prov-service
+    port: 8091
+    replicas: 2
+    env:
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+
+  uplift-service:
+    image: atlas-uplift-service
+    port: 8092
+    replicas: 1
+    env:
+      PROV_SERVICE_URL: "{{ .Values.global.endpoints.provService }}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "{{ .Values.global.backingStores.otelEndpoint }}"
+
+  fake-idp:
+    image: atlas-fake-idp
+    port: 8093
+    replicas: 1
+    # IMPORTANT: deploy this only when running the auth-sim demo.
+    # Production (auth-real) deployments should set
+    # `services.fake-idp.enabled: false` to omit it entirely.
+    enabled: true
+    exposeIngress: true
+    env: {}
+
+
+# ---------------------------------------------------------------------------
+# Ingress — only the gateway and (optionally) fake-idp surface
+# externally. Internal services are reachable only via Kubernetes
+# Service DNS.
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: nginx
+  hosts:
+    gateway: atlas.example.com
+    fakeIdp: idp.atlas.example.com
+  tls:
+    enabled: true
+    secretName: atlas-tls
+  annotations: {}

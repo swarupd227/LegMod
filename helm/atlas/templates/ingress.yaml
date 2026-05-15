@@ -1,0 +1,46 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: atlas-gateway
+  labels: {{- include "atlas.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- $fakeIdpEnabled := default true (index .Values.services "fake-idp" "enabled") }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.hosts.gateway | quote }}
+        {{- if and $fakeIdpEnabled .Values.ingress.hosts.fakeIdp }}
+        - {{ .Values.ingress.hosts.fakeIdp | quote }}
+        {{- end }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.hosts.gateway | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: {{ (index .Values.services "api-gateway" "port") }}
+    {{- if and $fakeIdpEnabled .Values.ingress.hosts.fakeIdp }}
+    - host: {{ .Values.ingress.hosts.fakeIdp | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fake-idp
+                port:
+                  number: {{ (index .Values.services "fake-idp" "port") }}
+    {{- end }}
+{{- end -}}

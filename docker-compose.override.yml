@@ -1,0 +1,6 @@
+# Loaded automatically alongside docker-compose.yml.
+# Dev-only overrides go here. Empty by default — Phase 0 keeps the
+# production-style frontend build (vite build → serve dist). To iterate
+# on the frontend without rebuilding, run `npm run dev` locally inside
+# ./frontend and point it at the gateway via VITE_API_BASE.
+services: {}

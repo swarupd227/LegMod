@@ -1,0 +1,26 @@
+apiVersion: v2
+name: atlas-migrate
+description: |
+  Atlas Migrate · legacy-migration accelerator (SOAP → JAX-WS, Spring → Jakarta).
+
+  This chart deploys the 13 Atlas services as Kubernetes Deployments + Services.
+  Backing stores (Postgres, Neo4j, MinIO, Redis, Temporal, Jaeger, Prometheus)
+  are NOT included — you supply them via your platform's preferred subcharts
+  (Bitnami / official) or use a managed service.
+
+  See docs/deployment.md for the full deployment runbook.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - atlas
+  - migration
+  - jax-ws
+  - jakarta
+  - envestnet
+maintainers:
+  - name: Atlas Migrate engineering
+    email: dev@envestnet.local
+sources:
+  - https://github.com/envestnet/atlas-migrate
+home: https://github.com/envestnet/atlas-migrate

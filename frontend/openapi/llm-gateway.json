@@ -1,0 +1,139 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Atlas Migrate · llm-gateway",
+    "version": "0.1.0",
+    "description": "HTTP contract for the llm-gateway service. Hand-curated mirror of the controller annotations; refresh by booting the service and `curl /v3/api-docs > frontend/openapi/llm-gateway.json` (see docs/api-contracts.md).",
+    "contact": {
+      "name": "Atlas Migrate engineering",
+      "email": "dev@envestnet.local"
+    },
+    "license": {
+      "name": "Proprietary — Envestnet Atlas Migrate"
+    }
+  },
+  "servers": [
+    { "url": "http://localhost:8080", "description": "Gateway (browser-facing)" },
+    { "url": "http://localhost:8082", "description": "llm-gateway (in-cluster)" }
+  ],
+  "security": [{ "bearer-jwt": [] }],
+  "tags": [
+    { "name": "llm", "description": "LLM invocation + health" }
+  ],
+  "paths": {
+    "/api/v1/llm/invoke": {
+      "post": {
+        "tags": ["llm"],
+        "operationId": "invoke",
+        "summary": "Invoke the configured Anthropic Claude model",
+        "description": "Forwards the prompt to Claude and returns the response. Falls back to a stubbed response when ANTHROPIC_API_KEY is unset or the upstream call fails — never 500s, so callers can keep their pipeline running in dev environments.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/InvokeRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Either the real LLM response or a stubbed fallback (distinguished by `stub: true`).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokeResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/llm/health": {
+      "get": {
+        "tags": ["llm"],
+        "operationId": "health",
+        "summary": "LLM-gateway readiness probe",
+        "description": "Returns a small JSON object indicating whether ANTHROPIC_API_KEY is configured and which Claude models are wired.",
+        "responses": {
+          "200": {
+            "description": "Health snapshot.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer-jwt": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Gateway-validated OIDC bearer token. See docs/auth.md."
+      }
+    },
+    "schemas": {
+      "InvokeRequest": {
+        "type": "object",
+        "description": "Free-form prompt + optional system message + model hint.",
+        "properties": {
+          "agent":     { "type": "string", "description": "Logical agent name issuing the call (provenance label)." },
+          "task":      { "type": "string", "description": "Free-text task descriptor (provenance label)." },
+          "system":    { "type": "string", "description": "System prompt." },
+          "prompt":    { "type": "string", "description": "User prompt body." },
+          "modelHint": {
+            "type": "string",
+            "description": "Resolves to a concrete model id. Accepts `auto` (server picks default), `opus`, `sonnet`, or any model id string passed through verbatim.",
+            "enum": ["auto", "opus", "sonnet"]
+          },
+          "maxTokens": { "type": "integer", "format": "int32", "minimum": 1, "default": 1024 }
+        }
+      },
+      "InvokeResponse": {
+        "type": "object",
+        "required": ["model", "stub", "output", "tokens", "cost_usd", "latency_ms"],
+        "properties": {
+          "model":      { "type": "string", "description": "Resolved model id (after applying modelHint)." },
+          "stub":       { "type": "boolean", "description": "True when the response is a fallback (no API key, upstream error, etc.)." },
+          "output": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "text": { "type": "string", "description": "Concatenated text from the model's content blocks. Stub responses are prefixed with `[stub] <reason>`." }
+            }
+          },
+          "tokens": {
+            "type": "object",
+            "required": ["in", "out"],
+            "properties": {
+              "in":  { "type": "integer", "format": "int64" },
+              "out": { "type": "integer", "format": "int64" }
+            }
+          },
+          "cost_usd":   { "type": "number", "format": "double" },
+          "latency_ms": { "type": "integer", "format": "int64" }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["ok", "configured", "models"],
+        "properties": {
+          "ok":         { "type": "boolean" },
+          "configured": { "type": "boolean", "description": "True when ANTHROPIC_API_KEY is set." },
+          "models": {
+            "type": "object",
+            "required": ["opus", "sonnet", "default"],
+            "properties": {
+              "opus":    { "type": "string" },
+              "sonnet":  { "type": "string" },
+              "default": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

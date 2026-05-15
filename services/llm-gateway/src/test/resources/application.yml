@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: llm-gateway-test
+  data:
+    redis:
+      # Redis isn't reached during the metric tests, but the autoconf
+      # bean wants a hostname. The lookup happens only on actual cache
+      # use, which the LlmController tests skip.
+      host: localhost
+      port: 6379
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+ANTHROPIC_API_KEY: ""
