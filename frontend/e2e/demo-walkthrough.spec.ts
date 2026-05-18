@@ -239,10 +239,12 @@ test('SOAP migration end-to-end — Apache WS-I Supply Chain sample (A → B)', 
   await page.waitForTimeout(800);
 
   // Submit. The button label transitions Creating… → Cloning… → Done.
-  // The dashboard refreshes once the clone returns, ~10–15 s for the
-  // WS-I SCM subpath with depth=1 + sparse-checkout.
+  // The dashboard refreshes once the clone returns. The Apache CXF
+  // repo is large (~600 MB full clone) — even with depth=1 +
+  // sparse-checkout the first GitHub fetch on a cold pipe runs 2–3
+  // minutes. 300s leaves headroom without making the spec brittle.
   await dialog.getByRole('button', { name: /Create project/i }).click();
-  await expect(dialog).not.toBeVisible({ timeout: 120_000 });
+  await expect(dialog).not.toBeVisible({ timeout: 300_000 });
   await page.waitForTimeout(1500);
 
   // ---------- 5. Click into the new project ----------
@@ -308,9 +310,12 @@ test('SOAP migration end-to-end — Apache WS-I Supply Chain sample (A → B)', 
 
   // ---------- 8. Forward to Stage B · Runtime Capture ----------
   await page.getByRole('button', { name: /Stage B Runtime Capture/i }).click();
+  await page.waitForTimeout(1500);
   // "Start runtime capture" is the panel's title text on the Stage B
-  // empty-state — a stable, unique tell.
-  await expect(page.getByText(/Start runtime capture/i)).toBeVisible({ timeout: 10_000 });
+  // empty-state — a stable, unique tell. Generous timeout because the
+  // first load after a fresh stack-up can take longer than the SPA's
+  // typical sub-second response (slow JS chunk fetch + first paint).
+  await expect(page.getByText(/Start runtime capture/i)).toBeVisible({ timeout: 30_000 });
   await page.waitForTimeout(1500);
 
   // ---------- 9. Begin a capture run ----------
