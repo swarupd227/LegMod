@@ -517,23 +517,63 @@ test('SOAP migration end-to-end — Apache WS-I Supply Chain sample (A → B)', 
   await expect(page.getByRole('link', { name: /Download ZIP/i }).or(
                 page.getByRole('button', { name: /Download ZIP/i })))
         .toBeVisible({ timeout: 120_000 });
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(3000);
 
-  // Scroll the closure markdown into view if rendered, so the final
-  // shot captures real LLM-written closure prose.
+  // The earlier cut ended abruptly during "Building..." because the
+  // smart-trim's freezedetect-based 4x speedup ate the silent
+  // end-hold. Now we generate ACTIVE content for the tail so the
+  // closing shot reads as a deliberate "look at the deliverable"
+  // moment rather than a hard cut. Two beats:
+  //
+  //   1. Scroll the closure markdown into view and slowly scroll
+  //      through its sections so the camera shows real LLM-written
+  //      prose at the end.
+  //   2. Click through the bundle's file manifest so the camera
+  //      hovers over the contents being shipped.
+
+  // Beat 1: scroll the closure into view, then slow-scroll downward
+  // a couple of viewport-page lengths so the content actively moves
+  // (this defeats freezedetect's classification of the tail as
+  // static).
   const closureHeader = page.getByText(/Closure document|Scope and target/i).first();
   if (await closureHeader.isVisible().catch(() => false)) {
     await closureHeader.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(2500);
+    // Slow page-by-page scroll downward to surface every H2 in
+    // the closure (Scope / Approach / How Atlas helped / etc.).
+    for (let i = 0; i < 4; i++) {
+      await page.mouse.wheel(0, 280);
+      await page.waitForTimeout(2200);
+    }
+    // Hold on the bottom of the closure for a beat.
+    await page.waitForTimeout(2500);
+    // Scroll back up to the header so the final frame is a clean
+    // "here is your closure document" shot.
+    await closureHeader.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(3500);
   } else {
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(8000);
+  }
+
+  // Beat 2: click into a couple of bundle manifest entries (if
+  // present) so the camera registers active interaction. Each click
+  // counts as a scene change for freezedetect, which prevents the
+  // smart-trim helper from compressing the tail.
+  const manifestEntries = page.getByRole('link').filter({
+    hasText: /authoritative\.wsdl|bindings\.xjb|jaxws-source\.zip|decisions\.json/i
+  });
+  const count = await manifestEntries.count().catch(() => 0);
+  for (let i = 0; i < Math.min(count, 3); i++) {
+    await manifestEntries.nth(i).hover().catch(() => {});
+    await page.waitForTimeout(1500);
   }
 
   // Longer end-hold so the closing voice-over line ("Atlas Migrate. Built
   // by Nous. The platform where AI doesn't replace your engineers — it
   // gives them the empirical ground truth to migrate with confidence.")
-  // can land before the video cuts. The original cut felt abrupt.
-  await page.waitForTimeout(7000);
+  // can land before the video cuts. The smart-trim helper preserves
+  // the last 15s at 1x speed, so this dwell stays at real time.
+  await page.waitForTimeout(10000);
 
   // Done. Playwright auto-finalises the .webm in test-results/
   // demo-walkthrough-…/video.webm

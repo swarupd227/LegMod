@@ -46,7 +46,7 @@ public class BuildTestService {
 
     public BuildTestService(JdbcTemplate jdbc,
                             @Value("${GEN_WORK_ROOT:/tmp/atlas-gen}") String genWorkRoot,
-                            @Value("${BUILD_TEST_TIMEOUT_SECONDS:90}") int defaultTimeoutSeconds) {
+                            @Value("${BUILD_TEST_TIMEOUT_SECONDS:360}") int defaultTimeoutSeconds) {
         this.jdbc = jdbc;
         this.genWorkRoot = genWorkRoot;
         this.defaultTimeoutSeconds = defaultTimeoutSeconds;

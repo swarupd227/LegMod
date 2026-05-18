@@ -43,9 +43,47 @@ RUN apt-get update \
 # range so it never collides with packages installed by the base image.
 RUN groupadd -g 10001 atlas && useradd -u 10001 -g atlas -m -s /bin/bash atlas
 
+# Install git so we can clone reference projects at build time.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && rm -rf /var/lib/apt/lists/*
+
+# Pre-warm the Maven local repository with everything spring-petclinic
+# (springboot3 branch) needs — both runtime dependencies AND Maven
+# plugins. Cloning the real project and running `mvn test-compile`
+# downloads the exact closure used by the Stage F Build & Test gate,
+# rather than guessing. Without this, mvn test in the customer source
+# either hangs (network unavailable) or fails offline (missing
+# plugin). With it, the gate runs offline and produces real
+# pass/fail counts.
+#
+# After resolution we DELETE the cloned source so it doesn't bloat
+# the image; only the populated ~/.m2/repository remains.
+USER atlas:atlas
+# Install a custom settings.xml that mirrors all external plugin
+# repositories to Maven Central. petclinic-springboot3 declares
+# spring-snapshots + spring-milestones as plugin repos; routing
+# them through central avoids ~10s of latency per missing artifact
+# when the gate runs.
+COPY --chown=atlas:atlas m2-settings.xml /home/atlas/.m2/settings.xml
+
+RUN mkdir -p /home/atlas/cache-build \
+ && cd /home/atlas/cache-build \
+ && git clone --depth=1 --branch=springboot3 \
+      https://github.com/spring-projects/spring-petclinic.git petclinic \
+ && cd petclinic \
+ # `mvn test -DskipTests` is the right warm step: it loads (and so
+ # downloads) the maven-surefire-plugin and every other lifecycle
+ # plugin petclinic uses, but skips actually running test bodies.
+ # After this, the Stage F Build & Test gate can run `mvn test`
+ # against any petclinic-shaped customer source tree and produce
+ # real pass/fail counts.
+ && mvn -B test -DskipTests 2>&1 | tail -10 \
+ && cd /home/atlas \
+ && rm -rf /home/atlas/cache-build
+
 WORKDIR /app
 COPY --from=build --chown=atlas:atlas /app/target/*.jar app.jar
-USER atlas:atlas
 
 # Java 21 enables container-aware heap sizing by default. The explicit
 # MaxRAMPercentage caps the JVM at 75% of the cgroup limit so GC +

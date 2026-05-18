@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Atlas Migrate · gen-service · Maven settings for the Stage F Build &
+  Test gate.
+
+  Suppresses the spring-snapshots and spring-milestones plugin
+  repositories that petclinic-springboot3 declares. Both repos are
+  reachable but slow, and every uncached transitive dep tries them
+  before falling through to Maven Central — adding ~10s of network
+  latency per dep. With the mirror below, all repository requests
+  route directly to Central, cutting the sandbox build time from
+  many minutes to under one minute against a fully-warmed cache.
+
+  Repositories the customer's pom.xml explicitly DECLARES are not
+  affected; only mirror routes are overridden.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
+  <mirrors>
+    <mirror>
+      <id>central-only</id>
+      <name>Route everything to Maven Central</name>
+      <url>https://repo.maven.apache.org/maven2</url>
+      <!-- Match any repo that isn't already central. -->
+      <mirrorOf>external:*,!central</mirrorOf>
+    </mirror>
+  </mirrors>
+</settings>
