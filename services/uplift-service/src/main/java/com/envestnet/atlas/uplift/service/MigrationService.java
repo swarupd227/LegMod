@@ -268,6 +268,18 @@ public class MigrationService {
             } catch (Exception e) {
                 log.warn("MinIO upload failed (continuing) · key={} err={}", key, e.getMessage());
             }
+
+            // Also write back to the cloned source tree on disk so the Stage
+            // F Build & Test gate can validate the change against the real
+            // file system. `/uploads/<projectId>/` is a local clone we own;
+            // we're not touching the customer's repo, so in-place mutation
+            // is safe.
+            try {
+                Files.writeString(p, working, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                log.warn("Source write-back failed (continuing) · file={} err={}",
+                        p, e.getMessage());
+            }
         }
 
         res.outputUri = String.format("s3://%s/uplift/%s/migrations/%s/", bucket, projectId, runId);

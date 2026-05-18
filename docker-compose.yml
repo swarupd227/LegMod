@@ -432,7 +432,11 @@ services:
       PROV_SERVICE_URL: http://prov-service:8091
     volumes:
       - ./samples:/samples:ro
-      - ./uploads:/uploads:ro
+      # Read-write: MigrationService writes recipe-transformed Java files
+      # back into the cloned source tree so the Stage F Build & Test gate
+      # can compile + test the migrated code. The uploads tree is our
+      # working clone, never the customer's actual repo.
+      - ./uploads:/uploads
     ports:
       - "${PORT_UPLIFT:-8092}:8092"
 

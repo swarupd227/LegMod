@@ -27,15 +27,22 @@ const IDP = 'http://localhost:8093';
 const CLIENT_ID = 'atlas-spa';
 const REDIRECT_URI = 'http://localhost:3000/auth/callback';
 
-// Spring PetClinic - the canonical "Spring framework sample everybody
-// has seen", recognizable on screen, and the repo's small enough that
-// sparse-checkout completes in seconds. Larger sources like Baeldung's
-// tutorials monorepo take >2 minutes to clone and break the demo's
-// pacing; petclinic gets us 30+ Java files of real Spring code in
-// well under 30 seconds.
-const GITHUB_URL    = 'https://github.com/spring-projects/spring-petclinic';
-const GITHUB_BRANCH = '';
-const GITHUB_SUBPATH = 'src/main/java';
+// Customer source for the UPLIFT demo: a Spring Boot 3.0.0 REST
+// service pinned to a known-good state (gs-rest-service @ d24a69c)
+// and pushed as an orphan branch on the LegMod demo repo so we
+// don't depend on upstream tracking the head against a moving
+// Spring version. The deps are exactly what gen-service pre-caches
+// at image build time (petclinic-springboot3 → Spring Boot 3.0.0),
+// so the Stage F Build & Test gate runs offline-clean and `mvn
+// test` finishes in ~6s with 2 passing tests on screen.
+//
+// Petclinic itself was the first pick but boots a full Hibernate
+// + JPA + Thymeleaf stack per test class (5+ min). Public head of
+// gs-rest-service has since moved to Spring Boot 4.x preview, which
+// won't resolve offline. Pinning here insulates the demo from both.
+const GITHUB_URL    = 'https://github.com/swarupd227/LegMod';
+const GITHUB_BRANCH = 'demo-uplift-source';
+const GITHUB_SUBPATH = '';
 
 const DEMO_PERSONA = 'bob@envestnet.local';   // ENGINEER + TECH_LEAD
 
@@ -180,11 +187,16 @@ test('UPLIFT framework migration end-to-end — Spring PetClinic (A → F)', asy
     await typeSlowly(dialog.getByLabel('Branch'), GITHUB_BRANCH);
     await page.waitForTimeout(200);
   }
-  await typeSlowly(dialog.getByLabel('Subpath'), GITHUB_SUBPATH);
+  if (GITHUB_SUBPATH) {
+    await typeSlowly(dialog.getByLabel('Subpath'), GITHUB_SUBPATH);
+    await page.waitForTimeout(800);
+  }
   await page.waitForTimeout(800);
 
   await dialog.getByRole('button', { name: /Create project/i }).click();
-  await expect(dialog).not.toBeVisible({ timeout: 120_000 });
+  // Full petclinic clone (no sparse-checkout subpath) takes ~3 min
+  // on a cold pipe. Give the dialog plenty of room.
+  await expect(dialog).not.toBeVisible({ timeout: 300_000 });
   await page.waitForTimeout(1500);
 
   // ---------- 4. Open the new project at Stage A (Inventory) ----------
@@ -413,14 +425,20 @@ test('UPLIFT framework migration end-to-end — Spring PetClinic (A → F)', asy
   // For UPLIFT, the gate runs `mvn test` against the customer's
   // OpenRewrite-modified source tree. This is the moment the
   // customer sees real evidence: "Atlas's rewrites did not break
-  // the project's existing tests." Maven cold-fetches deps the
-  // first time, so 4 min timeout.
+  // the project's existing tests." gen-service pre-caches the
+  // Spring Boot 3.3 dependency closure at image build time, so
+  // mvn test runs offline against a Boot 3.3 customer codebase
+  // and produces real pass/fail counts. 5 minute timeout for cold
+  // first runs.
   const buildBtn = page.getByRole('button', { name: /Build & test now|Build .{1,3} test now/i });
   if (await buildBtn.isVisible().catch(() => false)) {
     await buildBtn.click();
-    await expect(page.getByText(/Passed|Compile failed|Tests failed|Build did not complete/i).first())
-          .toBeVisible({ timeout: 240_000 });
-    await page.waitForTimeout(7000);
+    // mvn test on petclinic with full Spring context init takes
+    // 3-5 min cold; allow 7.
+    await expect(page.getByText(/Passed|Compile failed|Tests failed|Build did not complete|Sandbox network/i).first())
+          .toBeVisible({ timeout: 420_000 });
+    // Hold so the viewer reads the pass/fail tiles and status banner.
+    await page.waitForTimeout(8000);
   }
 
   const seedCutoverBtn = page.getByRole('button', { name: /Seed cutover plan/i });
@@ -437,7 +455,16 @@ test('UPLIFT framework migration end-to-end — Spring PetClinic (A → F)', asy
     await finalizeF.click();
     await page.waitForTimeout(3000);
   }
-  await page.waitForTimeout(5000);   // hold for closing voice-over
+  // Active end-hold: hover over a couple of cutover entries so the
+  // tail isn't "static screen" for freezedetect. Smart-trim then
+  // preserves the genuine last 15s at 1x speed.
+  const cutoverEntries = page.getByText(/planned|shadow|canary|live/i);
+  const cnt = await cutoverEntries.count().catch(() => 0);
+  for (let i = 0; i < Math.min(cnt, 3); i++) {
+    await cutoverEntries.nth(i).hover().catch(() => {});
+    await page.waitForTimeout(1800);
+  }
+  await page.waitForTimeout(8000);   // final dwell for closing line
 
   // Done. Playwright auto-finalises the .webm in test-results/.
 });

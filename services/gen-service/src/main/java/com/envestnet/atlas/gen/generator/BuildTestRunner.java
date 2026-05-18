@@ -68,6 +68,22 @@ public class BuildTestRunner {
      * Run "mvn test" for an in-place modified Java project (UPLIFT
      * track). Assumes the source tree already has a pom.xml at its
      * root.
+     *
+     * Strategy: rely on the pre-warmed ~/.m2 cache (populated at image
+     * build time from a real spring-petclinic clone) but stay in
+     * ONLINE mode. Maven's "-o" offline flag is too strict — it
+     * refuses cached artifacts that don't have provenance recorded
+     * against every plugin repository the customer pom declares,
+     * even when those artifacts are sitting right there in the
+     * local cache. Online mode lets Maven prefer the cache and only
+     * fall through to network for genuinely missing artifacts.
+     *
+     * We also skip the non-essential plugins (checkstyle, javaformat,
+     * spotless, license, jacoco, enforcer): they often reference
+     * config files that weren't part of the customer's sparse-
+     * checkout subpath, and they're not what the customer's actually
+     * asking ("did Atlas break my tests?"). The surefire test
+     * execution still runs and produces real pass/fail counts.
      */
     public Result buildAndTestExisting(Path workDir, int timeoutSeconds) throws Exception {
         if (!Files.exists(workDir.resolve("pom.xml"))) {
@@ -78,7 +94,21 @@ public class BuildTestRunner {
                 workDir = withPom;
             }
         }
-        List<String> args = List.of("mvn", "-q", "-B", "-fae", "test");
+        // NOTE on the missing -q flag: surefire emits its "Tests run: N,
+        // Failures: M, Errors: K, Skipped: S" summary at INFO level. Maven
+        // -q suppresses INFO and the parser below sees zero counts, even
+        // when the build passed cleanly. We accept the extra log volume to
+        // get accurate test totals — the UI shows the parsed numbers, not
+        // the raw log, so verbosity doesn't leak through.
+        List<String> args = List.of("mvn", "-B", "-fae", "test",
+                "-Dcheckstyle.skip=true",
+                "-Dspring-javaformat.skip=true",
+                "-Dspotless.check.skip=true",
+                "-Dlicense.skip=true",
+                "-Dformatter.skip=true",
+                "-Ddependency-check.skip=true",
+                "-Djacoco.skip=true",
+                "-Denforcer.skip=true");
         return runMaven(workDir, args, "UPLIFT", timeoutSeconds);
     }
 
